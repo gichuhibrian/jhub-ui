@@ -1,9 +1,9 @@
-import { useDataStore, getProjectProgress } from '@/store/useStore';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { FolderKanban, Users, CheckCircle, Activity, ArrowRight, Clock, TrendingUp, Layers, BarChart3, Settings, Plus, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { PROJECT_STATUS_LABELS, ProjectStatus } from '@/types';
+import { reportsService, DashboardStats, RecentProject, RecentActivity, ProjectStatusBreakdown } from '@/services/reports.service';
 
 // ─── Hooks ───
 function useInView() {
@@ -68,18 +68,24 @@ function DashCard({ children, className = "", hoverAccent = true }: { children: 
   );
 }
 
-const statusColor: Record<ProjectStatus, { dot: string; bg: string; text: string }> = {
-  'not-started': { dot: 'bg-slate-500', bg: 'bg-slate-500/10', text: 'text-slate-400' },
-  'in-progress': { dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-400' },
-  'completed': { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
-  'on-hold': { dot: 'bg-rose-400', bg: 'bg-rose-500/10', text: 'text-rose-400' },
+const statusColor: Record<string, { dot: string; bg: string; text: string }> = {
+  'PLANNING': { dot: 'bg-slate-500', bg: 'bg-slate-500/10', text: 'text-slate-400' },
+  'IN_PROGRESS': { dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-400' },
+  'COMPLETED': { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
+  'ON_HOLD': { dot: 'bg-rose-400', bg: 'bg-rose-500/10', text: 'text-rose-400' },
+};
+
+const statusLabels: Record<string, string> = {
+  'PLANNING': 'Planning',
+  'IN_PROGRESS': 'In Progress',
+  'COMPLETED': 'Completed',
+  'ON_HOLD': 'On Hold',
 };
 
 // ─── Stat Card ───
-function StatCard({ stat, index, isLast }: {
+function StatCard({ stat, index }: {
   stat: { value: number; label: string; icon: any; color: string; bgColor: string };
   index: number;
-  isLast: boolean;
 }) {
   const [ref, visible] = useInView();
   const val = useCountUp(stat.value, visible, 1800);
@@ -105,27 +111,22 @@ function StatCard({ stat, index, isLast }: {
 }
 
 // ─── Project Row ───
-function ProjectRow({ project, tasks: allTasks, users: allUsers, index }: {
-  project: any;
-  tasks: any[];
-  users: any[];
+function ProjectRow({ project, index }: {
+  project: RecentProject;
   index: number;
 }) {
-  const projectTasks = allTasks.filter((t: any) => t.projectId === project.id);
-  const progress = getProjectProgress(projectTasks);
-  const members = allUsers.filter((u: any) => project.memberIds?.includes(u.id));
-  const sc = statusColor[project.status as ProjectStatus] || statusColor['not-started'];
+  const sc = statusColor[project.status] || statusColor['PLANNING'];
 
   return (
     <Reveal delay={index * 0.05}>
       <Link
-        to={`/admin/projects`}
+        to={`/admin/projects/${project.id}`}
         className="group flex items-center gap-4 p-4 rounded-xl border border-slate-800 hover:border-amber-500/30 hover:bg-slate-950/60 transition-all duration-200"
       >
         {/* Thumbnail */}
         <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border border-slate-800">
           {project.featuredImage ? (
-            <img src={project.featuredImage} alt={project.name} className="w-full h-full object-cover" />
+            <img src={project.featuredImage} alt={project.title} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full bg-slate-800 grid place-items-center">
               <FolderKanban className="w-5 h-5 text-slate-600" />
@@ -136,10 +137,10 @@ function ProjectRow({ project, tasks: allTasks, users: allUsers, index }: {
         {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-sm font-semibold text-slate-200 truncate group-hover:text-amber-400 transition-colors">{project.name}</h3>
+            <h3 className="text-sm font-semibold text-slate-200 truncate group-hover:text-amber-400 transition-colors">{project.title}</h3>
             <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[0.65rem] font-medium font-mono uppercase tracking-wide ${sc.bg} ${sc.text}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-              {PROJECT_STATUS_LABELS[project.status as ProjectStatus]}
+              {statusLabels[project.status]}
             </span>
           </div>
           <p className="text-xs text-slate-500 truncate">{project.description}</p>
@@ -147,15 +148,15 @@ function ProjectRow({ project, tasks: allTasks, users: allUsers, index }: {
 
         {/* Team */}
         <div className="hidden sm:flex -space-x-2 flex-shrink-0">
-          {members.slice(0, 3).map((m: any) => (
+          {project.members.slice(0, 3).map((m) => (
             <Avatar key={m.id} className="h-7 w-7 border-2 border-slate-900">
-              <AvatarImage src={m.avatarUrl} />
+              <AvatarImage src={''} />
               <AvatarFallback className="text-[0.6rem] bg-amber-500/10 text-amber-400 font-bold">{m.name?.[0]}</AvatarFallback>
             </Avatar>
           ))}
-          {members.length > 3 && (
+          {project.members.length > 3 && (
             <div className="w-7 h-7 rounded-full border-2 border-slate-900 bg-slate-800 grid place-items-center text-[0.6rem] text-slate-400 font-mono font-bold">
-              +{members.length - 3}
+              +{project.members.length - 3}
             </div>
           )}
         </div>
@@ -165,10 +166,10 @@ function ProjectRow({ project, tasks: allTasks, users: allUsers, index }: {
           <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-1000"
-              style={{ width: `${progress}%` }}
+              style={{ width: `${project.progress}%` }}
             />
           </div>
-          <span className="text-xs text-slate-500 font-mono w-8 text-right">{progress}%</span>
+          <span className="text-xs text-slate-500 font-mono w-8 text-right">{project.progress}%</span>
         </div>
 
         <ArrowRight className="h-4 w-4 text-slate-700 group-hover:text-amber-400 transition-colors flex-shrink-0" />
@@ -179,21 +180,74 @@ function ProjectRow({ project, tasks: allTasks, users: allUsers, index }: {
 
 // ─── Main ───
 export default function AdminDashboard() {
-  const { projects, users, tasks, activities } = useDataStore();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
+  const [statusBreakdown, setStatusBreakdown] = useState<ProjectStatusBreakdown[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const active = projects.filter((p) => p.status === 'in-progress').length;
-  const completed = projects.filter((p) => p.status === 'completed').length;
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter((t) => t.status === 'done').length;
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        const [statsData, projectsData, activitiesData, breakdownData] = await Promise.all([
+          reportsService.getDashboardStats(),
+          reportsService.getRecentProjects(5),
+          reportsService.getRecentActivities(6),
+          reportsService.getProjectStatusBreakdown(),
+        ]);
+        
+        setStats(statsData);
+        setRecentProjects(projectsData);
+        setRecentActivities(activitiesData);
+        setStatusBreakdown(breakdownData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+        console.error('Dashboard error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const stats = [
-    { label: 'Total Projects', value: projects.length, icon: FolderKanban, color: 'text-amber-400', bgColor: 'bg-amber-500/10' },
-    { label: 'Active', value: active, icon: Activity, color: 'text-sky-400', bgColor: 'bg-sky-500/10' },
-    { label: 'Completed', value: completed, icon: CheckCircle, color: 'text-emerald-400', bgColor: 'bg-emerald-500/10' },
-    { label: 'Team Members', value: users.length, icon: Users, color: 'text-violet-400', bgColor: 'bg-violet-500/10' },
+    fetchDashboardData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-500">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-rose-400 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-amber-500 text-slate-950 rounded-lg hover:bg-amber-600 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const dashboardStats = [
+    { label: 'Total Projects', value: stats?.totalProjects || 0, icon: FolderKanban, color: 'text-amber-400', bgColor: 'bg-amber-500/10' },
+    { label: 'Active', value: stats?.activeProjects || 0, icon: Activity, color: 'text-sky-400', bgColor: 'bg-sky-500/10' },
+    { label: 'Completed', value: stats?.completedProjects || 0, icon: CheckCircle, color: 'text-emerald-400', bgColor: 'bg-emerald-500/10' },
+    { label: 'Team Members', value: stats?.totalUsers || 0, icon: Users, color: 'text-violet-400', bgColor: 'bg-violet-500/10' },
   ];
 
-  const taskCompletionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const taskCompletionRate = stats?.taskCompletionRate || 0;
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-950 text-slate-200" style={{ fontFamily: "'Sora', sans-serif" }}>
@@ -258,8 +312,8 @@ export default function AdminDashboard() {
 
         {/* ── Stats Grid ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-          {stats.map((s, i) => (
-            <StatCard key={i} stat={s} index={i} isLast={i === stats.length - 1} />
+          {dashboardStats.map((s, i) => (
+            <StatCard key={i} stat={s} index={i} />
           ))}
         </div>
 
@@ -274,17 +328,17 @@ export default function AdminDashboard() {
                   <div className="w-9 h-9 rounded-lg bg-amber-500/10 grid place-items-center">
                     <Layers className="h-4 w-4 text-amber-400" />
                   </div>
-                  <h2 className="text-lg font-semibold">All Projects</h2>
+                  <h2 className="text-lg font-semibold">Recent Projects</h2>
                 </div>
                 <Link to="/admin/projects" className="text-xs text-slate-500 hover:text-amber-400 transition-colors font-mono uppercase tracking-wider flex items-center gap-1">
                   View All <ExternalLink className="w-3 h-3" />
                 </Link>
               </div>
               <div className="space-y-2">
-                {projects.slice(0, 5).map((project, i) => (
-                  <ProjectRow key={project.id} project={project} tasks={tasks} users={users} index={i} />
+                {recentProjects.map((project, i) => (
+                  <ProjectRow key={project.id} project={project} index={i} />
                 ))}
-                {projects.length === 0 && (
+                {recentProjects.length === 0 && (
                   <div className="text-center py-12 text-slate-600 text-sm">
                     No projects yet. Create your first project to get started.
                   </div>
@@ -324,8 +378,8 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="flex justify-between text-xs text-slate-500 font-mono border-t border-slate-800 pt-3 mt-1">
-                  <span>{completedTasks} done</span>
-                  <span>{totalTasks - completedTasks} remaining</span>
+                  <span>{stats?.completedTasks || 0} done</span>
+                  <span>{(stats?.totalTasks || 0) - (stats?.completedTasks || 0)} remaining</span>
                 </div>
               </DashCard>
             </Reveal>
@@ -340,27 +394,25 @@ export default function AdminDashboard() {
                   <h2 className="text-sm font-semibold">Status Breakdown</h2>
                 </div>
                 <div className="space-y-3">
-                  {(Object.keys(statusColor) as ProjectStatus[]).map((status) => {
-                    const count = projects.filter((p) => p.status === status).length;
-                    const pct = projects.length > 0 ? Math.round((count / projects.length) * 100) : 0;
-                    const sc = statusColor[status];
+                  {statusBreakdown.map((item) => {
+                    const sc = statusColor[item.status] || statusColor['PLANNING'];
                     return (
-                      <div key={status}>
+                      <div key={item.status}>
                         <div className="flex items-center justify-between mb-1.5">
                           <div className="flex items-center gap-2">
                             <span className={`w-2 h-2 rounded-full ${sc.dot}`} />
-                            <span className="text-xs text-slate-400">{PROJECT_STATUS_LABELS[status]}</span>
+                            <span className="text-xs text-slate-400">{statusLabels[item.status]}</span>
                           </div>
-                          <span className="text-xs font-mono text-slate-500">{count}</span>
+                          <span className="text-xs font-mono text-slate-500">{item.count}</span>
                         </div>
                         <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-1000 ${
-                              status === 'completed' ? 'bg-emerald-500' :
-                              status === 'in-progress' ? 'bg-amber-500' :
-                              status === 'on-hold' ? 'bg-rose-500' : 'bg-slate-600'
+                              item.status === 'COMPLETED' ? 'bg-emerald-500' :
+                              item.status === 'IN_PROGRESS' ? 'bg-amber-500' :
+                              item.status === 'ON_HOLD' ? 'bg-rose-500' : 'bg-slate-600'
                             }`}
-                            style={{ width: `${pct}%` }}
+                            style={{ width: `${item.percentage}%` }}
                           />
                         </div>
                       </div>
@@ -385,100 +437,64 @@ export default function AdminDashboard() {
                   </div>
                   <h2 className="text-lg font-semibold">Recent Activity</h2>
                 </div>
-                <span className="text-xs text-slate-600 font-mono">{activities.length} total</span>
+                <span className="text-xs text-slate-600 font-mono">{recentActivities.length} recent</span>
               </div>
               <div className="space-y-1">
-                {activities.slice(0, 6).map((a, i) => {
-                  const user = users.find((u) => u.id === a.userId);
-                  return (
-                    <div key={a.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-950/60 transition-colors">
-                      <Avatar className="h-8 w-8 mt-0.5 border-2 border-slate-800 flex-shrink-0">
-                        <AvatarImage src={user?.avatarUrl} />
-                        <AvatarFallback className="text-[0.6rem] bg-amber-500/10 text-amber-400 font-bold">{user?.name?.[0]}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm leading-relaxed">
-                          <span className="font-medium text-slate-200">{user?.name}</span>{' '}
-                          <span className="text-slate-500">{a.action}</span>{' '}
-                          <span className="font-medium text-amber-400">{a.target}</span>
-                        </p>
-                        <p className="text-[0.65rem] text-slate-600 font-mono mt-0.5">
-                          {new Date(a.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
+                {recentActivities.map((a) => (
+                  <div key={a.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-950/60 transition-colors">
+                    <Avatar className="h-8 w-8 mt-0.5 border-2 border-slate-800 flex-shrink-0">
+                      <AvatarImage src={''} />
+                      <AvatarFallback className="text-[0.6rem] bg-amber-500/10 text-amber-400 font-bold">{a.userName?.[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm leading-relaxed">
+                        <span className="font-medium text-slate-200">{a.userName}</span>{' '}
+                        <span className="text-slate-500">{a.action}</span>{' '}
+                        <span className="font-medium text-amber-400">{a.target}</span>
+                      </p>
+                      <p className="text-[0.65rem] text-slate-600 font-mono mt-0.5">
+                        {new Date(a.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
                     </div>
-                  );
-                })}
-                {activities.length === 0 && (
+                  </div>
+                ))}
+                {recentActivities.length === 0 && (
                   <div className="text-center py-8 text-slate-600 text-sm">No recent activity</div>
                 )}
               </div>
             </DashCard>
           </Reveal>
 
-          {/* Quick Actions + Team */}
-          <div className="flex flex-col gap-6">
-            <Reveal delay={0.15}>
-              <DashCard>
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-9 h-9 rounded-lg bg-orange-500/10 grid place-items-center">
-                    <ArrowRight className="h-4 w-4 text-orange-400" />
-                  </div>
-                  <h2 className="text-sm font-semibold">Quick Actions</h2>
+          {/* Quick Actions */}
+          <Reveal delay={0.15}>
+            <DashCard>
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 rounded-lg bg-orange-500/10 grid place-items-center">
+                  <ArrowRight className="h-4 w-4 text-orange-400" />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { to: "/admin/projects", label: "Projects", icon: FolderKanban, color: "text-amber-400", bg: "bg-amber-500/10" },
-                    { to: "/admin/users", label: "Users", icon: Users, color: "text-sky-400", bg: "bg-sky-500/10" },
-                    { to: "/admin/tasks", label: "Tasks", icon: CheckCircle, color: "text-emerald-400", bg: "bg-emerald-500/10" },
-                    { to: "/admin/settings", label: "Settings", icon: Settings, color: "text-violet-400", bg: "bg-violet-500/10" },
-                  ].map((action) => (
-                    <Link
-                      key={action.to}
-                      to={action.to}
-                      className="group flex flex-col items-center gap-2.5 p-4 rounded-xl border border-slate-800 hover:border-amber-500/30 hover:bg-slate-950/60 transition-all duration-200"
-                    >
-                      <div className={`w-10 h-10 rounded-lg ${action.bg} grid place-items-center`}>
-                        <action.icon className={`h-5 w-5 ${action.color}`} />
-                      </div>
-                      <span className="text-xs font-medium text-slate-400 group-hover:text-slate-200 transition-colors">{action.label}</span>
-                    </Link>
-                  ))}
-                </div>
-              </DashCard>
-            </Reveal>
-
-            <Reveal delay={0.2}>
-              <DashCard>
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-pink-500/10 grid place-items-center">
-                      <Users className="h-4 w-4 text-pink-400" />
+                <h2 className="text-sm font-semibold">Quick Actions</h2>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { to: "/admin/projects", label: "Projects", icon: FolderKanban, color: "text-amber-400", bg: "bg-amber-500/10" },
+                  { to: "/admin/users", label: "Users", icon: Users, color: "text-sky-400", bg: "bg-sky-500/10" },
+                  { to: "/admin/tasks", label: "Tasks", icon: CheckCircle, color: "text-emerald-400", bg: "bg-emerald-500/10" },
+                  { to: "/admin/settings", label: "Settings", icon: Settings, color: "text-violet-400", bg: "bg-violet-500/10" },
+                ].map((action) => (
+                  <Link
+                    key={action.to}
+                    to={action.to}
+                    className="group flex flex-col items-center gap-2.5 p-4 rounded-xl border border-slate-800 hover:border-amber-500/30 hover:bg-slate-950/60 transition-all duration-200"
+                  >
+                    <div className={`w-10 h-10 rounded-lg ${action.bg} grid place-items-center`}>
+                      <action.icon className={`h-5 w-5 ${action.color}`} />
                     </div>
-                    <h2 className="text-sm font-semibold">Team</h2>
-                  </div>
-                  <Link to="/admin/users" className="text-xs text-slate-500 hover:text-amber-400 transition-colors font-mono uppercase tracking-wider">
-                    All
+                    <span className="text-xs font-medium text-slate-400 group-hover:text-slate-200 transition-colors">{action.label}</span>
                   </Link>
-                </div>
-                <div className="space-y-2">
-                  {users.slice(0, 4).map((user) => (
-                    <div key={user.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-950/60 transition-colors">
-                      <Avatar className="h-8 w-8 border-2 border-slate-800">
-                        <AvatarImage src={user.avatarUrl} />
-                        <AvatarFallback className="text-[0.6rem] bg-amber-500/10 text-amber-400 font-bold">{user.name?.[0]}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-200 truncate">{user.name}</p>
-                        <p className="text-[0.65rem] text-slate-600 font-mono truncate">{user.role}</p>
-                      </div>
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" title="Online" />
-                    </div>
-                  ))}
-                </div>
-              </DashCard>
-            </Reveal>
-          </div>
+                ))}
+              </div>
+            </DashCard>
+          </Reveal>
         </div>
       </div>
     </div>
