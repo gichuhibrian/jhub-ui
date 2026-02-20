@@ -17,11 +17,16 @@ const userLinks = [
 ];
 
 export default function BackofficeLayout() {
+
   const { currentUser, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+
+    console.log(currentUser);
+
 
   if (!currentUser) return null;
 

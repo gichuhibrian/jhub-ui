@@ -1,11 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataStore, getProjectProgress } from '@/store/useStore';
 import { Project, ProjectStatus, PROJECT_STATUS_LABELS } from '@/types';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Search, LayoutGrid, List, Trash2, Edit, Eye, EyeOff, GripVertical, ArrowRight, FolderKanban, X } from 'lucide-react';
+import { Plus, Search, LayoutGrid, List, Trash2, Edit, Eye, EyeOff, GripVertical, ArrowRight, FolderKanban, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { projectService } from '@/services/projectService';
+import { 
+  mapBackendProjectToFrontend, 
+  mapFrontendFormToCreatePayload, 
+  mapFrontendFormToUpdatePayload 
+} from '@/lib/projectMapper';
 
 // ─── Status Maps ───
 const statusStyle: Record<ProjectStatus, { dot: string; bg: string; text: string; border: string }> = {
@@ -153,7 +159,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ─── Main ───
 export default function ProjectsManagement() {
   const navigate = useNavigate();
-  const { projects, tasks, users, addProject, updateProject, deleteProject } = useDataStore();
+  const { tasks, users } = useDataStore();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'table' | 'kanban'>('table');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -162,6 +171,25 @@ export default function ProjectsManagement() {
   const [dragOverCol, setDragOverCol] = useState<ProjectStatus | null>(null);
 
   const [form, setForm] = useState({ name: '', description: '', status: 'not-started' as ProjectStatus, startDate: '', dueDate: '', isPublic: false });
+
+  // Load projects from API
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const loadProjects = async () => {
+    try {
+      setLoading(true);
+      const backendProjects = await projectService.getAll();
+      const mappedProjects = backendProjects.map(mapBackendProjectToFrontend);
+      setProjects(mappedProjects);
+    } catch (error: any) {
+      console.error('Failed to load projects:', error);
+      toast.error(error.response?.data?.message || 'Failed to load projects');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filtered = projects.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -177,37 +205,90 @@ export default function ProjectsManagement() {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
-    if (!form.name) return;
-    if (editProject) {
-      updateProject(editProject.id, form);
-      toast.success('Project updated');
-    } else {
-      const newProject: Project = {
-        id: 'p' + Date.now(),
-        ...form,
-        images: [],
-        featuredImage: '',
-        teamLeadId: '',
-        memberIds: [],
-      };
-      addProject(newProject);
-      toast.success('Project created');
+  const handleSave = async () => {
+    if (!form.name || !form.startDate) {
+      toast.error('Please fill in required fields');
+      return;
     }
-    setDialogOpen(false);
+
+    try {
+      setSaving(true);
+      
+      if (editProject) {
+        // Update existing project
+        const payload = mapFrontendFormToUpdatePayload(form);
+        const updated = await projectService.update(editProject.id, payload);
+        const mappedProject = mapBackendProjectToFrontend(updated);
+        
+        setProjects(prev => prev.map(p => p.id === editProject.id ? mappedProject : p));
+        toast.success('Project updated successfully');
+      } else {
+        // Create new project
+        const payload = mapFrontendFormToCreatePayload(form);
+        const created = await projectService.create(payload);
+        const mappedProject = mapBackendProjectToFrontend(created);
+        
+        setProjects(prev => [...prev, mappedProject]);
+        toast.success('Project created successfully');
+      }
+      
+      setDialogOpen(false);
+    } catch (error: any) {
+      console.error('Failed to save project:', error);
+      toast.error(error.response?.data?.message || 'Failed to save project');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = (id: string, e?: any) => {
+  const handleDelete = async (id: string, e?: any) => {
     e?.stopPropagation();
-    deleteProject(id);
-    toast.success('Project deleted');
+    
+    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await projectService.delete(id);
+      setProjects(prev => prev.filter(p => p.id !== id));
+      toast.success('Project deleted successfully');
+    } catch (error: any) {
+      console.error('Failed to delete project:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete project');
+    }
   };
 
-  const handleDrop = (projectId: string, newStatus: ProjectStatus) => {
-    updateProject(projectId, { status: newStatus });
-    setDraggedId(null);
-    setDragOverCol(null);
-    toast.success('Status updated');
+  const handleToggleVisibility = async (project: Project, e: any) => {
+    e.stopPropagation();
+    
+    try {
+      const payload = mapFrontendFormToUpdatePayload({ isPublic: !project.isPublic });
+      const updated = await projectService.update(project.id, payload);
+      const mappedProject = mapBackendProjectToFrontend(updated);
+      
+      setProjects(prev => prev.map(p => p.id === project.id ? mappedProject : p));
+      toast.success(project.isPublic ? 'Made private' : 'Made public');
+    } catch (error: any) {
+      console.error('Failed to update visibility:', error);
+      toast.error(error.response?.data?.message || 'Failed to update visibility');
+    }
+  };
+
+  const handleDrop = async (projectId: string, newStatus: ProjectStatus) => {
+    try {
+      const payload = mapFrontendFormToUpdatePayload({ status: newStatus });
+      const updated = await projectService.update(projectId, payload);
+      const mappedProject = mapBackendProjectToFrontend(updated);
+      
+      setProjects(prev => prev.map(p => p.id === projectId ? mappedProject : p));
+      toast.success('Status updated successfully');
+    } catch (error: any) {
+      console.error('Failed to update status:', error);
+      toast.error(error.response?.data?.message || 'Failed to update status');
+    } finally {
+      setDraggedId(null);
+      setDragOverCol(null);
+    }
   };
 
   return (
@@ -297,8 +378,16 @@ export default function ProjectsManagement() {
               <div className="col-span-1 text-right">Actions</div>
             </div>
 
-            {/* Table rows */}
-            {filtered.length === 0 && (
+            {/* Loading state */}
+            {loading && (
+              <div className="text-center py-16">
+                <Loader2 className="w-8 h-8 text-amber-400 mx-auto mb-3 animate-spin" />
+                <p className="text-sm text-slate-500">Loading projects...</p>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!loading && filtered.length === 0 && (
               <div className="text-center py-16">
                 <FolderKanban className="w-8 h-8 text-slate-700 mx-auto mb-3" />
                 <p className="text-sm text-slate-500">
@@ -306,7 +395,9 @@ export default function ProjectsManagement() {
                 </p>
               </div>
             )}
-            {filtered.map((p) => {
+
+            {/* Table rows */}
+            {!loading && filtered.map((p) => {
               const pTasks = tasks.filter((t) => t.projectId === p.id);
               const progress = getProjectProgress(pTasks);
               const lead = users.find((u) => u.id === p.teamLeadId);
@@ -368,11 +459,7 @@ export default function ProjectsManagement() {
                   {/* Visibility */}
                   <div className="col-span-1 text-center">
                     <GhostBtn
-                      onClick={(e: any) => {
-                        e.stopPropagation();
-                        updateProject(p.id, { isPublic: !p.isPublic });
-                        toast.success(p.isPublic ? 'Made private' : 'Made public');
-                      }}
+                      onClick={(e: any) => handleToggleVisibility(p, e)}
                       title={p.isPublic ? 'Public — click to make private' : 'Private — click to make public'}
                     >
                       {p.isPublic
@@ -493,14 +580,35 @@ export default function ProjectsManagement() {
         title={editProject ? 'Edit Project' : 'New Project'}
         footer={
           <>
-            <OutlineBtn onClick={() => setDialogOpen(false)}>Cancel</OutlineBtn>
-            <PrimaryButton small onClick={handleSave}>{editProject ? 'Update' : 'Create'}</PrimaryButton>
+            <OutlineBtn onClick={() => setDialogOpen(false)} className={saving ? 'opacity-50 pointer-events-none' : ''}>
+              Cancel
+            </OutlineBtn>
+            <PrimaryButton small onClick={handleSave} className={saving ? 'opacity-75' : ''}>
+              {saving ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  {editProject ? 'Updating...' : 'Creating...'}
+                </>
+              ) : (
+                editProject ? 'Update' : 'Create'
+              )}
+            </PrimaryButton>
           </>
         }
       >
         <div className="space-y-4">
-          <InputField label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Project name" />
-          <TextareaField label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} placeholder="Describe the project..." />
+          <InputField 
+            label="Name *" 
+            value={form.name} 
+            onChange={(v) => setForm({ ...form, name: v })} 
+            placeholder="Project name" 
+          />
+          <TextareaField 
+            label="Description" 
+            value={form.description} 
+            onChange={(v) => setForm({ ...form, description: v })} 
+            placeholder="Describe the project..." 
+          />
           <div className="grid grid-cols-2 gap-4">
             <SelectField
               label="Status"
@@ -517,9 +625,20 @@ export default function ProjectsManagement() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <InputField label="Start Date" type="date" value={form.startDate} onChange={(v) => setForm({ ...form, startDate: v })} />
-            <InputField label="Due Date" type="date" value={form.dueDate} onChange={(v) => setForm({ ...form, dueDate: v })} />
+            <InputField 
+              label="Start Date *" 
+              type="date" 
+              value={form.startDate} 
+              onChange={(v) => setForm({ ...form, startDate: v })} 
+            />
+            <InputField 
+              label="Due Date" 
+              type="date" 
+              value={form.dueDate} 
+              onChange={(v) => setForm({ ...form, dueDate: v })} 
+            />
           </div>
+          <p className="text-xs text-slate-600 mt-2">* Required fields</p>
         </div>
       </Modal>
     </div>
