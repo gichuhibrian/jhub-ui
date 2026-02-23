@@ -12,6 +12,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import ProjectsManagement from "./pages/admin/ProjectsManagement";
 import AdminProjectDetail from "./pages/admin/AdminProjectDetail";
 import UsersManagement from "./pages/admin/UsersManagement";
+import TasksManagement from "./pages/admin/TasksManagement";
 import UserDashboard from "./pages/user/UserDashboard";
 import UserProjectDetail from "./pages/user/UserProjectDetail";
 import NotFound from "./pages/NotFound";
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="projects" element={<ProjectsManagement />} />
             <Route path="projects/:projectId" element={<AdminProjectDetail />} />
             <Route path="users" element={<UsersManagement />} />
+            <Route path="tasks" element={<TasksManagement />} />
           </Route>
 
           {/* User */}
