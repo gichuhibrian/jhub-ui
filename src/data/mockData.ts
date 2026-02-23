@@ -3,6 +3,7 @@ import { User, Project, Task, ActivityItem } from '@/types';
 export const seedUsers: User[] = [
   { id: 'u1', name: 'Sarah Chen', email: 'sarah@company.com', password: 'admin123', role: 'admin', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah' },
   { id: 'u2', name: 'Marcus Rivera', email: 'marcus@company.com', password: 'admin123', role: 'admin', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Marcus' },
+  { id: 'ujohn', name: 'John Mwangi', email: 'johnmwangi1729@gmail.com', password: 'John001?', role: 'admin', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=John' },
   { id: 'u3', name: 'Emily Watson', email: 'emily@company.com', password: 'user123', role: 'user', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Emily' },
   { id: 'u4', name: 'James Park', email: 'james@company.com', password: 'user123', role: 'user', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=James' },
   { id: 'u5', name: 'Aisha Patel', email: 'aisha@company.com', password: 'user123', role: 'user', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aisha' },

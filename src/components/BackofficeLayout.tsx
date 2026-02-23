@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/useStore';
 import {
-  LayoutDashboard, FolderKanban, Users, LogOut, ChevronRight, Menu, X, Layers, ExternalLink,
+  LayoutDashboard, FolderKanban, Users, LogOut, ChevronRight, Menu, X, Layers, ExternalLink, ListTodo,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -9,6 +9,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 const adminLinks = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/admin/projects', label: 'Projects', icon: FolderKanban },
+  { to: '/admin/tasks', label: 'Tasks', icon: ListTodo },
   { to: '/admin/users', label: 'Users', icon: Users },
 ];
 
@@ -17,11 +18,16 @@ const userLinks = [
 ];
 
 export default function BackofficeLayout() {
+
   const { currentUser, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+
+    console.log(currentUser);
+
 
   if (!currentUser) return null;
 
