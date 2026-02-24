@@ -18,6 +18,7 @@ import { Search, SlidersHorizontal, X } from 'lucide-react';
 import { isAfter, parseISO, startOfDay, endOfWeek, endOfMonth, startOfWeek, startOfMonth } from 'date-fns';
 import { KanbanColumn, COLUMNS } from './KanbanColumn';
 import { KanbanCard } from './KanbanCard';
+import { TaskDetailPanel } from '../TaskDetailPanel';
 
 export interface KanbanBoardProps {
   /** If provided, only show tasks for this project */
@@ -60,6 +61,7 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
 
   // ── Drag state ─────────────────────────────────────────────────────────
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   // ── Filters ────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
@@ -291,6 +293,7 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
               tasks={filteredTasks.filter(t => t.status === col.status)}
               showProject={showProject}
               readonly={readonly}
+              onTaskClick={setSelectedTaskId}
             />
           ))}
         </div>
@@ -314,6 +317,14 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
         <div className="text-center py-12 text-slate-500 text-sm">
           {hasActiveFilters ? 'No tasks match your filters.' : 'No tasks yet.'}
         </div>
+      )}
+
+      {/* Task Detail Panel */}
+      {selectedTaskId && (
+        <TaskDetailPanel
+          taskId={selectedTaskId}
+          onClose={() => setSelectedTaskId(null)}
+        />
       )}
     </div>
   );

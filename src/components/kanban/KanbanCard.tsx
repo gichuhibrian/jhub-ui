@@ -25,9 +25,11 @@ interface KanbanCardProps {
   readonly: boolean;
   /** Called when card is being rendered as drag overlay (no drag hooks) */
   overlay?: boolean;
+  /** Called when card is clicked */
+  onClick?: () => void;
 }
 
-export function KanbanCard({ task, showProject, readonly, overlay = false }: KanbanCardProps) {
+export function KanbanCard({ task, showProject, readonly, overlay = false, onClick }: KanbanCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     disabled: readonly || overlay,
@@ -36,7 +38,7 @@ export function KanbanCard({ task, showProject, readonly, overlay = false }: Kan
   const style = {
     transform: overlay ? undefined : CSS.Translate.toString(transform),
     opacity: isDragging ? 0.35 : 1,
-    cursor: readonly ? 'default' : 'grab',
+    cursor: readonly ? 'pointer' : 'grab',
   };
 
   const doneObjectives = task.objectives.filter(o => o.status === 'DONE').length;
@@ -48,12 +50,21 @@ export function KanbanCard({ task, showProject, readonly, overlay = false }: Kan
 
   const pr = PRIORITY_STYLE[task.priority] ?? PRIORITY_STYLE.MEDIUM;
 
+  const handleClick = (e: React.MouseEvent) => {
+    // Don't trigger onClick when dragging
+    if (!isDragging && onClick) {
+      e.stopPropagation();
+      onClick();
+    }
+  };
+
   return (
     <div
       ref={overlay ? undefined : setNodeRef}
       style={style}
       {...(overlay ? {} : { ...listeners, ...attributes })}
-      className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-3.5 space-y-2.5 shadow-sm select-none touch-none"
+      onClick={handleClick}
+      className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-3.5 space-y-2.5 shadow-sm select-none touch-none transition-colors"
     >
       {/* Priority + Project */}
       <div className="flex items-center justify-between gap-2">

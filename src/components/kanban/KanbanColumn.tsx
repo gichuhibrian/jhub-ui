@@ -46,9 +46,10 @@ interface KanbanColumnProps {
   tasks: TaskResponse[];
   showProject: boolean;
   readonly: boolean;
+  onTaskClick?: (taskId: string) => void;
 }
 
-export function KanbanColumn({ config, tasks, showProject, readonly }: KanbanColumnProps) {
+export function KanbanColumn({ config, tasks, showProject, readonly, onTaskClick }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: config.status });
 
   return (
@@ -77,6 +78,7 @@ export function KanbanColumn({ config, tasks, showProject, readonly }: KanbanCol
             task={task}
             showProject={showProject}
             readonly={readonly}
+            onClick={() => onTaskClick?.(task.id)}
           />
         ))}
 
