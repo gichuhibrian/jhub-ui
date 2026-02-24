@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/useStore';
 import {
-  LayoutDashboard, FolderKanban, Users, LogOut, ChevronRight, Menu, X, Layers, ExternalLink, ListTodo,
+  LayoutDashboard, FolderKanban, Users, LogOut, ChevronRight, Menu, X, Layers, ExternalLink, ListTodo, ScrollText,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -11,6 +11,7 @@ const adminLinks = [
   { to: '/admin/projects', label: 'Projects', icon: FolderKanban },
   { to: '/admin/tasks', label: 'Tasks', icon: ListTodo },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText },
 ];
 
 const userLinks = [
