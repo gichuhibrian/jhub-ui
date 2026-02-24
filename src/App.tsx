@@ -15,6 +15,7 @@ import UsersManagement from "./pages/admin/UsersManagement";
 import TasksManagement from "./pages/admin/TasksManagement";
 import UserDashboard from "./pages/user/UserDashboard";
 import UserProjectDetail from "./pages/user/UserProjectDetail";
+import AcceptInvitePage from "./pages/AcceptInvitePage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/project/:projectId" element={<PublicProjectDetail />} />
+          <Route path="/invite/accept" element={<AcceptInvitePage />} />
 
           {/* Admin */}
           <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><BackofficeLayout /></ProtectedRoute>}>
