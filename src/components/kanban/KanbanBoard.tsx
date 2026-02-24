@@ -12,9 +12,10 @@ import {
   closestCenter,
 } from '@dnd-kit/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { taskService, TaskResponse, TaskStatus, TaskPriority } from '@/services/taskService';
+import { taskService, TaskResponse, TaskStatus, TaskPriority, CreateTaskPayload } from '@/services/taskService';
+import { userService } from '@/services/userService';
 import { toast } from 'sonner';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { Search, SlidersHorizontal, X, Plus } from 'lucide-react';
 import { isAfter, parseISO, startOfDay, endOfWeek, endOfMonth, startOfWeek, startOfMonth } from 'date-fns';
 import { KanbanColumn, COLUMNS } from './KanbanColumn';
 import { KanbanCard } from './KanbanCard';
@@ -62,6 +63,14 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
   // ── Drag state ─────────────────────────────────────────────────────────
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [createTaskModal, setCreateTaskModal] = useState(false);
+  const [taskForm, setTaskForm] = useState<CreateTaskPayload>({
+    projectId: projectId || '',
+    title: '',
+    description: '',
+    status: 'TODO',
+    priority: 'MEDIUM',
+  });
 
   // ── Filters ────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
@@ -80,6 +89,12 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
   const { data: allTasks = [], isLoading, isError } = useQuery({
     queryKey: ['tasks'],
     queryFn: () => taskService.getAll(),
+  });
+
+  // Fetch users for assignee selection
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => userService.getAll(),
   });
 
   // Client-side scope by projectId / userId
@@ -145,6 +160,24 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
     },
   });
 
+  // ── Create task mutation ───────────────────────────────────────────────
+  const createTaskMutation = useMutation({
+    mutationFn: (data: CreateTaskPayload) => taskService.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Task created');
+      setCreateTaskModal(false);
+      setTaskForm({
+        projectId: projectId || '',
+        title: '',
+        description: '',
+        status: 'TODO',
+        priority: 'MEDIUM',
+      });
+    },
+    onError: () => toast.error('Failed to create task'),
+  });
+
   // ── Drag handlers ──────────────────────────────────────────────────────
   const handleDragStart = (event: DragStartEvent) => {
     setActiveTaskId(event.active.id as string);
@@ -194,6 +227,18 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
     <div className="space-y-4" style={{ fontFamily: "'Sora', sans-serif" }}>
       {/* ── Toolbar ── */}
       <div className="flex items-center gap-2 flex-wrap">
+        {/* Create Task Button */}
+        {!readonly && projectId && (
+          <button
+            onClick={() => setCreateTaskModal(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all cursor-pointer border-none"
+            style={{ fontFamily: 'inherit' }}
+          >
+            <Plus className="h-4 w-4" />
+            New Task
+          </button>
+        )}
+
         {/* Search */}
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
@@ -325,6 +370,115 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
           taskId={selectedTaskId}
           onClose={() => setSelectedTaskId(null)}
         />
+      )}
+
+      {/* Create Task Modal */}
+      {createTaskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCreateTaskModal(false)} />
+          <div className="relative bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl">
+            <div className="flex items-center justify-between p-6 pb-4">
+              <h2 className="text-lg font-semibold">Create New Task</h2>
+              <button
+                onClick={() => setCreateTaskModal(false)}
+                className="w-8 h-8 rounded-lg hover:bg-slate-800 grid place-items-center text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 pt-0 space-y-4">
+              <div>
+                <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Title *</label>
+                <input
+                  type="text"
+                  value={taskForm.title}
+                  onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+                  placeholder="Enter task title"
+                  className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Description</label>
+                <textarea
+                  value={taskForm.description}
+                  onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                  placeholder="Enter task description"
+                  rows={3}
+                  className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Status</label>
+                  <select
+                    value={taskForm.status}
+                    onChange={(e) => setTaskForm({ ...taskForm, status: e.target.value as TaskStatus })}
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none"
+                  >
+                    <option value="TODO">To Do</option>
+                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="REVIEW">In Review</option>
+                    <option value="DONE">Done</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Priority</label>
+                  <select
+                    value={taskForm.priority}
+                    onChange={(e) => setTaskForm({ ...taskForm, priority: e.target.value as TaskPriority })}
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none"
+                  >
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HIGH">High</option>
+                    <option value="URGENT">Urgent</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Assignee</label>
+                  <select
+                    value={taskForm.userId || ''}
+                    onChange={(e) => setTaskForm({ ...taskForm, userId: e.target.value || undefined })}
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none"
+                  >
+                    <option value="">Unassigned</option>
+                    {allUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name || user.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Due Date</label>
+                  <input
+                    type="date"
+                    value={taskForm.endDate || ''}
+                    onChange={(e) => setTaskForm({ ...taskForm, endDate: e.target.value || undefined })}
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="px-6 pb-6 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setCreateTaskModal(false)}
+                className="px-4 py-2 rounded-lg border border-slate-700 text-slate-400 hover:border-slate-600 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => taskForm.title && createTaskMutation.mutate(taskForm)}
+                disabled={!taskForm.title || createTaskMutation.isPending}
+                className="px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {createTaskMutation.isPending ? 'Creating...' : 'Create Task'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

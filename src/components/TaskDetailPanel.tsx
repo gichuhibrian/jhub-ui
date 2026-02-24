@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { taskService, TaskResponse } from '@/services/taskService';
 import { objectiveService, ObjectiveResponse } from '@/services/objectiveService';
 import { commentService, CommentResponse } from '@/services/commentService';
+import { userService } from '@/services/userService';
 import { useCurrentUser, usePermissions } from '@/hooks/usePermissions';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { X, Check, Plus, Trash2, Send, Clock, User, Flag, Calendar, MessageSquare, Activity } from 'lucide-react';
+import { X, Check, Plus, Trash2, Send, Clock, User, Flag, Calendar, MessageSquare, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { TASK_STATUS_LABELS, PRIORITY_LABELS, TaskStatus, Priority } from '@/types';
@@ -33,8 +34,26 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
   const queryClient = useQueryClient();
   const currentUser = useCurrentUser();
   const permissions = usePermissions();
+  
+  // Local state for form fields
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    status: 'TODO' as TaskStatus,
+    priority: 'MEDIUM' as Priority,
+    userId: '',
+    endDate: '',
+  });
+  const [hasChanges, setHasChanges] = useState(false);
   const [newObjective, setNewObjective] = useState('');
   const [newComment, setNewComment] = useState('');
+
+  // Handle close with refresh
+  const handleClose = () => {
+    // Invalidate tasks query to refresh the Kanban board
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    onClose();
+  };
 
   // Queries
   const { data: task, isLoading } = useQuery({
@@ -54,16 +73,58 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
     enabled: !!taskId,
   });
 
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => userService.getAll(),
+  });
+
+  // Initialize form data when task loads
+  useEffect(() => {
+    if (task) {
+      setFormData({
+        title: task.title,
+        description: task.description || '',
+        status: task.status,
+        priority: task.priority,
+        userId: task.userId || '',
+        endDate: task.endDate?.split('T')[0] || '',
+      });
+      setHasChanges(false);
+    }
+  }, [task]);
+
+  // Track changes
+  const handleFieldChange = (field: string, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    setHasChanges(true);
+  };
+
   // Mutations
   const updateTaskMutation = useMutation({
     mutationFn: (data: Partial<TaskResponse>) => taskService.update(taskId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task', taskId] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      setHasChanges(false);
       toast.success('Task updated');
     },
     onError: () => toast.error('Failed to update task'),
   });
+
+  const handleSave = () => {
+    if (!formData.title.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+    updateTaskMutation.mutate({
+      title: formData.title,
+      description: formData.description,
+      status: formData.status,
+      priority: formData.priority,
+      userId: formData.userId || null,
+      endDate: formData.endDate || null,
+    });
+  };
 
   const createObjectiveMutation = useMutation({
     mutationFn: (deliverable: string) => objectiveService.create({ taskId, deliverable, status: 'TODO' }),
@@ -125,7 +186,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
   const progress = objectives.length > 0 ? Math.round((completedObjectives / objectives.length) * 100) : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={handleClose}>
       <div
         className="relative bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -134,12 +195,24 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between p-6 pb-4 bg-slate-900 border-b border-slate-800">
           <h2 className="text-xl font-semibold text-slate-100">Task Details</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all grid place-items-center"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {canEdit && hasChanges && (
+              <button
+                onClick={handleSave}
+                disabled={updateTaskMutation.isPending}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {updateTaskMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </button>
+            )}
+            <button
+              onClick={handleClose}
+              className="w-8 h-8 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all grid place-items-center"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
@@ -149,8 +222,8 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
             {canEdit ? (
               <input
                 type="text"
-                value={task.title}
-                onChange={(e) => updateTaskMutation.mutate({ title: e.target.value })}
+                value={formData.title}
+                onChange={(e) => handleFieldChange('title', e.target.value)}
                 className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all"
               />
             ) : (
@@ -163,8 +236,8 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
             <label className="block text-xs font-mono text-slate-500 uppercase tracking-widest mb-2">Description</label>
             {canEdit ? (
               <textarea
-                value={task.description || ''}
-                onChange={(e) => updateTaskMutation.mutate({ description: e.target.value })}
+                value={formData.description}
+                onChange={(e) => handleFieldChange('description', e.target.value)}
                 rows={3}
                 className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm resize-y focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all"
                 placeholder="Add a description..."
@@ -184,8 +257,8 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
               </label>
               {canEdit ? (
                 <select
-                  value={task.status}
-                  onChange={(e) => updateTaskMutation.mutate({ status: e.target.value as TaskStatus })}
+                  value={formData.status}
+                  onChange={(e) => handleFieldChange('status', e.target.value)}
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all"
                 >
                   {Object.entries(TASK_STATUS_LABELS).map(([value, label]) => (
@@ -207,8 +280,8 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
               </label>
               {canEdit ? (
                 <select
-                  value={task.priority}
-                  onChange={(e) => updateTaskMutation.mutate({ priority: e.target.value as Priority })}
+                  value={formData.priority}
+                  onChange={(e) => handleFieldChange('priority', e.target.value)}
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all"
                 >
                   {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
@@ -228,20 +301,35 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                 <User className="w-3 h-3 inline mr-1" />
                 Assignee
               </label>
-              <div className="flex items-center gap-2">
-                {task.assignedTo ? (
-                  <>
-                    <Avatar className="h-6 w-6 border-2 border-slate-800">
-                      <AvatarFallback className="text-xs bg-amber-500/10 text-amber-400 font-bold">
-                        {task.assignedTo.name?.[0] || task.assignedTo.email[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm text-slate-300">{task.assignedTo.name || task.assignedTo.email}</span>
-                  </>
-                ) : (
-                  <span className="text-sm text-slate-500">Unassigned</span>
-                )}
-              </div>
+              {canEdit ? (
+                <select
+                  value={formData.userId}
+                  onChange={(e) => handleFieldChange('userId', e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all"
+                >
+                  <option value="">Unassigned</option>
+                  {allUsers.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name || user.email}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {task.assignedTo ? (
+                    <>
+                      <Avatar className="h-6 w-6 border-2 border-slate-800">
+                        <AvatarFallback className="text-xs bg-amber-500/10 text-amber-400 font-bold">
+                          {task.assignedTo.name?.[0] || task.assignedTo.email[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm text-slate-300">{task.assignedTo.name || task.assignedTo.email}</span>
+                    </>
+                  ) : (
+                    <span className="text-sm text-slate-500">Unassigned</span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Due Date */}
@@ -253,8 +341,8 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
               {canEdit ? (
                 <input
                   type="date"
-                  value={task.endDate?.split('T')[0] || ''}
-                  onChange={(e) => updateTaskMutation.mutate({ endDate: e.target.value })}
+                  value={formData.endDate}
+                  onChange={(e) => handleFieldChange('endDate', e.target.value)}
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all"
                 />
               ) : (
@@ -265,10 +353,10 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
             </div>
           </div>
 
-          {/* Objectives */}
-          <div>
+          {/* Objectives Section */}
+          <div className="border-t border-slate-800 pt-6">
             <div className="flex items-center justify-between mb-3">
-              <label className="text-xs font-mono text-slate-500 uppercase tracking-widest">
+              <label className="text-sm font-semibold text-slate-200">
                 Objectives ({completedObjectives}/{objectives.length})
               </label>
               <div className="flex items-center gap-2">
@@ -306,6 +394,9 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                   )}
                 </div>
               ))}
+              {objectives.length === 0 && (
+                <p className="text-center py-4 text-slate-600 text-sm">No objectives yet</p>
+              )}
             </div>
 
             {canEdit && (
@@ -335,9 +426,9 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
 
           {/* Comments */}
           {permissions.can.addComments && (
-            <div>
-              <label className="block text-xs font-mono text-slate-500 uppercase tracking-widest mb-3">
-                <MessageSquare className="w-3 h-3 inline mr-1" />
+            <div className="border-t border-slate-800 pt-6">
+              <label className="block text-sm font-semibold text-slate-200 mb-3">
+                <MessageSquare className="w-4 h-4 inline mr-1" />
                 Comments ({comments.length})
               </label>
 

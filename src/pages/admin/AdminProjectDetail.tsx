@@ -6,12 +6,14 @@ import { taskService } from '@/services/taskService';
 import { userService } from '@/services/userService';
 import { projectMemberService } from '@/services/projectMemberService';
 import { projectImageService } from '@/services/projectImageService';
+import { projectDocumentService } from '@/services/projectDocumentService';
 import { objectiveService } from '@/services/objectiveService';
-import { ArrowLeft, Users as UsersIcon, ListTodo, BarChart3, Image as ImageIcon, Plus, Trash2, Calendar, Crown, X, Edit } from 'lucide-react';
+import { ArrowLeft, Users as UsersIcon, ListTodo, BarChart3, Image as ImageIcon, Plus, Trash2, Calendar, Crown, X, Edit, FileText, Download, Upload } from 'lucide-react';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import { PROJECT_STATUS_LABELS, ProjectStatus, TaskStatus, Priority } from '@/types';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
+import { uploadFileToS3, getFileIcon, formatFileSize } from '@/lib/s3Upload';
 
 // ─── Status Maps ───
 const projectStatusStyle: Record<ProjectStatus, { dot: string; bg: string; text: string }> = {
@@ -62,11 +64,17 @@ export default function AdminProjectDetail() {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'members' | 'gallery'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'members' | 'gallery' | 'resources'>('overview');
   const [addMemberModal, setAddMemberModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [addImageModal, setAddImageModal] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [uploadMethod, setUploadMethod] = useState<'file' | 'url'>('file');
+  const [addDocumentModal, setAddDocumentModal] = useState(false);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
 
   // Fetch project data
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -97,6 +105,16 @@ export default function AdminProjectDetail() {
     queryFn: async () => {
       const allImages = await projectImageService.getAll();
       return allImages.filter(img => img.projectId === projectId);
+    },
+    enabled: !!projectId,
+  });
+
+  // Fetch project documents
+  const { data: documents = [] } = useQuery({
+    queryKey: ['project-documents', projectId],
+    queryFn: async () => {
+      const allDocs = await projectDocumentService.getAll();
+      return allDocs.filter(doc => doc.projectId === projectId);
     },
     enabled: !!projectId,
   });
@@ -142,9 +160,56 @@ export default function AdminProjectDetail() {
       toast.success('Image added');
       setAddImageModal(false);
       setImageUrl('');
+      setImageFile(null);
+      setImagePreview('');
     },
     onError: () => toast.error('Failed to add image'),
   });
+
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be less than 5MB');
+      return;
+    }
+
+    setImageFile(file);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle image upload
+  const handleImageUpload = async () => {
+    if (uploadMethod === 'url') {
+      if (!imageUrl) {
+        toast.error('Please enter an image URL');
+        return;
+      }
+      addImageMutation.mutate(imageUrl);
+    } else {
+      if (!imageFile || !imagePreview) {
+        toast.error('Please select an image file');
+        return;
+      }
+      // Use the base64 data URL as the image URL
+      addImageMutation.mutate(imagePreview);
+    }
+  };
 
   // Delete image mutation
   const deleteImageMutation = useMutation({
@@ -155,6 +220,57 @@ export default function AdminProjectDetail() {
     },
     onError: () => toast.error('Failed to delete image'),
   });
+
+  // Add document mutation
+  const addDocumentMutation = useMutation({
+    mutationFn: async (file: File) => {
+      setUploadingDocument(true);
+      try {
+        const { url, fileName } = await uploadFileToS3(file);
+        return projectDocumentService.create({
+          projectId: projectId!,
+          documentName: fileName,
+          documentUrl: url,
+        });
+      } finally {
+        setUploadingDocument(false);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-documents', projectId] });
+      toast.success('Document added');
+      setAddDocumentModal(false);
+      setDocumentFile(null);
+    },
+    onError: () => {
+      setUploadingDocument(false);
+      toast.error('Failed to add document');
+    },
+  });
+
+  // Delete document mutation
+  const deleteDocumentMutation = useMutation({
+    mutationFn: (documentId: string) => projectDocumentService.delete(documentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-documents', projectId] });
+      toast.success('Document deleted');
+    },
+    onError: () => toast.error('Failed to delete document'),
+  });
+
+  // Handle document file selection
+  const handleDocumentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Document must be less than 10MB');
+      return;
+    }
+
+    setDocumentFile(file);
+  };
 
   if (projectLoading) {
     return (
@@ -236,6 +352,9 @@ export default function AdminProjectDetail() {
           </TabButton>
           <TabButton active={activeTab === 'gallery'} onClick={() => setActiveTab('gallery')}>
             <ImageIcon className="w-3.5 h-3.5" /> Gallery
+          </TabButton>
+          <TabButton active={activeTab === 'resources'} onClick={() => setActiveTab('resources')}>
+            <FileText className="w-3.5 h-3.5" /> Resources
           </TabButton>
         </div>
 
@@ -456,6 +575,62 @@ export default function AdminProjectDetail() {
             </div>
           </div>
         )}
+
+        {/* RESOURCES TAB */}
+        {activeTab === 'resources' && (
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold">Project Resources ({documents.length})</h2>
+              <button
+                onClick={() => setAddDocumentModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all"
+              >
+                <Plus className="w-4 h-4" /> Add Document
+              </button>
+            </div>
+
+            <div className="grid gap-3">
+              {documents.map((doc) => (
+                <div key={doc.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center gap-4 hover:border-amber-500/30 transition-all">
+                  <div className="text-4xl">{getFileIcon(doc.documentName)}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-200 truncate">{doc.documentName}</div>
+                    <div className="text-sm text-slate-500">
+                      Added {new Date(doc.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={doc.documentUrl}
+                      download={doc.documentName}
+                      className="p-2 rounded-lg border border-slate-700 text-slate-400 hover:border-amber-500/40 hover:text-amber-400 transition-all"
+                      title="Download"
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
+                    <button
+                      onClick={() => {
+                        if (confirm('Delete this document?')) {
+                          deleteDocumentMutation.mutate(doc.id);
+                        }
+                      }}
+                      className="p-2 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {documents.length === 0 && (
+                <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-xl">
+                  <FileText className="w-8 h-8 text-slate-700 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500">No documents yet. Add documents to share with your team.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Add Member Modal */}
@@ -506,42 +681,162 @@ export default function AdminProjectDetail() {
       {/* Add Image Modal */}
       <Modal
         open={addImageModal}
-        onClose={() => setAddImageModal(false)}
+        onClose={() => {
+          setAddImageModal(false);
+          setImageUrl('');
+          setImageFile(null);
+          setImagePreview('');
+          setUploadMethod('file');
+        }}
         title="Add Image to Gallery"
         footer={
           <>
             <button
-              onClick={() => setAddImageModal(false)}
+              onClick={() => {
+                setAddImageModal(false);
+                setImageUrl('');
+                setImageFile(null);
+                setImagePreview('');
+                setUploadMethod('file');
+              }}
               className="px-4 py-2 rounded-lg border border-slate-700 text-slate-400 hover:border-slate-600 transition-all"
             >
               Cancel
             </button>
             <button
-              onClick={() => imageUrl && addImageMutation.mutate(imageUrl)}
-              disabled={!imageUrl}
+              onClick={handleImageUpload}
+              disabled={(uploadMethod === 'url' && !imageUrl) || (uploadMethod === 'file' && !imageFile) || addImageMutation.isPending}
               className="px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Add Image
+              {addImageMutation.isPending ? 'Adding...' : 'Add Image'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {/* Upload Method Toggle */}
+          <div className="flex gap-2 p-1 bg-slate-800 rounded-lg">
+            <button
+              onClick={() => setUploadMethod('file')}
+              className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                uploadMethod === 'file'
+                  ? 'bg-amber-500 text-slate-950'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Upload File
+            </button>
+            <button
+              onClick={() => setUploadMethod('url')}
+              className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                uploadMethod === 'url'
+                  ? 'bg-amber-500 text-slate-950'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Image URL
+            </button>
+          </div>
+
+          {uploadMethod === 'file' ? (
+            <>
+              <div>
+                <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">
+                  Select Image File
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-500 file:text-slate-950 hover:file:bg-amber-600 file:cursor-pointer"
+                />
+                <p className="text-xs text-slate-600 mt-1">Max size: 5MB. Supported: JPG, PNG, GIF, WebP</p>
+              </div>
+              {imagePreview && (
+                <div className="aspect-video rounded-lg overflow-hidden border border-slate-800">
+                  <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Image URL</label>
+                <input
+                  type="url"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="https://example.com/image.jpg"
+                  className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none"
+                />
+              </div>
+              {imageUrl && (
+                <div className="aspect-video rounded-lg overflow-hidden border border-slate-800">
+                  <img
+                    src={imageUrl}
+                    alt="Preview"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://via.placeholder.com/400x300?text=Invalid+URL';
+                    }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* Add Document Modal */}
+      <Modal
+        open={addDocumentModal}
+        onClose={() => {
+          setAddDocumentModal(false);
+          setDocumentFile(null);
+        }}
+        title="Add Document"
+        footer={
+          <>
+            <button
+              onClick={() => {
+                setAddDocumentModal(false);
+                setDocumentFile(null);
+              }}
+              className="px-4 py-2 rounded-lg border border-slate-700 text-slate-400 hover:border-slate-600 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => documentFile && addDocumentMutation.mutate(documentFile)}
+              disabled={!documentFile || uploadingDocument}
+              className="px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {uploadingDocument ? 'Uploading...' : 'Add Document'}
             </button>
           </>
         }
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Image URL</label>
+            <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">
+              Select Document
+            </label>
             <input
-              type="url"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none"
+              type="file"
+              onChange={handleDocumentSelect}
+              className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-500 file:text-slate-950 hover:file:bg-amber-600 file:cursor-pointer"
             />
+            <p className="text-xs text-slate-600 mt-1">Max size: 10MB. All file types supported.</p>
           </div>
-          {imageUrl && (
-            <div className="aspect-video rounded-lg overflow-hidden border border-slate-800">
-              <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" onError={(e) => {
-                e.currentTarget.src = 'https://via.placeholder.com/400x300?text=Invalid+URL';
-              }} />
+          {documentFile && (
+            <div className="p-4 rounded-lg border border-slate-800 bg-slate-950/60">
+              <div className="flex items-center gap-3">
+                <div className="text-3xl">{getFileIcon(documentFile.name)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-slate-200 truncate">{documentFile.name}</div>
+                  <div className="text-sm text-slate-500">{formatFileSize(documentFile.size)}</div>
+                </div>
+              </div>
             </div>
           )}
         </div>

@@ -1,28 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDataStore, getProjectProgress } from '@/store/useStore';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePermissions } from '@/hooks/usePermissions';
-import { Project, ProjectStatus, PROJECT_STATUS_LABELS } from '@/types';
+import { ProjectStatus, PROJECT_STATUS_LABELS } from '@/types';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Search, LayoutGrid, List, Trash2, Edit, Eye, EyeOff, GripVertical, ArrowRight, FolderKanban, X, Loader2 } from 'lucide-react';
+import { Plus, Search, LayoutGrid, List, Trash2, Edit, Eye, EyeOff, GripVertical, FolderKanban, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { projectService } from '@/services/projectService';
-import { 
-  mapBackendProjectToFrontend, 
-  mapFrontendFormToCreatePayload, 
-  mapFrontendFormToUpdatePayload 
-} from '@/lib/projectMapper';
+import { projectService, ProjectResponse } from '@/services/projectService';
+import { projectMemberService } from '@/services/projectMemberService';
+import { taskService } from '@/services/taskService';
 
 // ─── Status Maps ───
 const statusStyle: Record<ProjectStatus, { dot: string; bg: string; text: string; border: string }> = {
-  'not-started': { dot: 'bg-slate-500', bg: 'bg-slate-500/10', text: 'text-slate-400', border: 'border-slate-700' },
-  'in-progress': { dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },
-  'completed': { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30' },
-  'on-hold': { dot: 'bg-rose-400', bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30' },
+  'PLANNING': { dot: 'bg-slate-500', bg: 'bg-slate-500/10', text: 'text-slate-400', border: 'border-slate-700' },
+  'IN_PROGRESS': { dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },
+  'COMPLETED': { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30' },
+  'ON_HOLD': { dot: 'bg-rose-400', bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30' },
 };
 
-const kanbanColumns: ProjectStatus[] = ['not-started', 'in-progress', 'completed', 'on-hold'];
+const kanbanColumns: ProjectStatus[] = ['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ON_HOLD'];
 
 // ─── Sub-components ───
 function InputField({ label, type = "text", value, onChange, placeholder = "" }: {
@@ -160,137 +157,142 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ─── Main ───
 export default function ProjectsManagement() {
   const navigate = useNavigate();
-  const { tasks, users } = useDataStore();
+  const queryClient = useQueryClient();
   const permissions = usePermissions();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'table' | 'kanban'>('table');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editProject, setEditProject] = useState<Project | null>(null);
+  const [editProject, setEditProject] = useState<ProjectResponse | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<ProjectStatus | null>(null);
 
-  const [form, setForm] = useState({ name: '', description: '', status: 'not-started' as ProjectStatus, startDate: '', dueDate: '', isPublic: false });
+  const [form, setForm] = useState({ name: '', description: '', status: 'PLANNING' as ProjectStatus, startDate: '', dueDate: '', isPublic: false });
 
-  // Load projects from API
-  useEffect(() => {
-    loadProjects();
-  }, []);
+  // Fetch projects
+  const { data: projects = [], isLoading: loading } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectService.getAll(),
+  });
 
-  const loadProjects = async () => {
-    try {
-      setLoading(true);
-      const backendProjects = await projectService.getAll();
-      const mappedProjects = backendProjects.map(mapBackendProjectToFrontend);
-      setProjects(mappedProjects);
-    } catch (error: any) {
-      console.error('Failed to load projects:', error);
-      toast.error(error.response?.data?.message || 'Failed to load projects');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Fetch all project members
+  const { data: allMembers = [] } = useQuery({
+    queryKey: ['project-members'],
+    queryFn: () => projectMemberService.getAll(),
+  });
 
-  const filtered = projects.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+  // Fetch all tasks
+  const { data: allTasks = [] } = useQuery({
+    queryKey: ['tasks'],
+    queryFn: () => taskService.getAll(),
+  });
+
+  const filtered = projects.filter((p) => p.title.toLowerCase().includes(search.toLowerCase()));
 
   const openCreate = () => {
     setEditProject(null);
-    setForm({ name: '', description: '', status: 'not-started', startDate: '', dueDate: '', isPublic: false });
+    setForm({ name: '', description: '', status: 'PLANNING', startDate: '', dueDate: '', isPublic: false });
     setDialogOpen(true);
   };
 
-  const openEdit = (p: Project) => {
+  const openEdit = (p: ProjectResponse) => {
     setEditProject(p);
-    setForm({ name: p.name, description: p.description, status: p.status, startDate: p.startDate, dueDate: p.dueDate, isPublic: p.isPublic });
+    setForm({ 
+      name: p.title, 
+      description: p.description || '', 
+      status: p.status, 
+      startDate: p.startDate.split('T')[0], 
+      dueDate: p.endDate ? p.endDate.split('T')[0] : '', 
+      isPublic: p.isPublic 
+    });
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
+  // Create project mutation
+  const createMutation = useMutation({
+    mutationFn: (payload: any) => projectService.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project created successfully');
+      setDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to create project');
+    },
+  });
+
+  // Update project mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) => projectService.update(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project updated successfully');
+      setDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to update project');
+    },
+  });
+
+  // Delete project mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => projectService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project deleted successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to delete project');
+    },
+  });
+
+  const handleSave = () => {
     if (!form.name || !form.startDate) {
       toast.error('Please fill in required fields');
       return;
     }
 
-    try {
-      setSaving(true);
-      
-      if (editProject) {
-        // Update existing project
-        const payload = mapFrontendFormToUpdatePayload(form);
-        const updated = await projectService.update(editProject.id, payload);
-        const mappedProject = mapBackendProjectToFrontend(updated);
-        
-        setProjects(prev => prev.map(p => p.id === editProject.id ? mappedProject : p));
-        toast.success('Project updated successfully');
-      } else {
-        // Create new project
-        const payload = mapFrontendFormToCreatePayload(form);
-        const created = await projectService.create(payload);
-        const mappedProject = mapBackendProjectToFrontend(created);
-        
-        setProjects(prev => [...prev, mappedProject]);
-        toast.success('Project created successfully');
-      }
-      
-      setDialogOpen(false);
-    } catch (error: any) {
-      console.error('Failed to save project:', error);
-      toast.error(error.response?.data?.message || 'Failed to save project');
-    } finally {
-      setSaving(false);
+    const payload = {
+      title: form.name,
+      description: form.description || undefined,
+      status: form.status,
+      startDate: form.startDate,
+      endDate: form.dueDate || undefined,
+      isPublic: form.isPublic,
+    };
+
+    if (editProject) {
+      updateMutation.mutate({ id: editProject.id, payload });
+    } else {
+      createMutation.mutate(payload);
     }
   };
 
-  const handleDelete = async (id: string, e?: any) => {
+  const handleDelete = (id: string, e?: any) => {
     e?.stopPropagation();
     
     if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
       return;
     }
 
-    try {
-      await projectService.delete(id);
-      setProjects(prev => prev.filter(p => p.id !== id));
-      toast.success('Project deleted successfully');
-    } catch (error: any) {
-      console.error('Failed to delete project:', error);
-      toast.error(error.response?.data?.message || 'Failed to delete project');
-    }
+    deleteMutation.mutate(id);
   };
 
-  const handleToggleVisibility = async (project: Project, e: any) => {
+  const handleToggleVisibility = (project: ProjectResponse, e: any) => {
     e.stopPropagation();
     
-    try {
-      const payload = mapFrontendFormToUpdatePayload({ isPublic: !project.isPublic });
-      const updated = await projectService.update(project.id, payload);
-      const mappedProject = mapBackendProjectToFrontend(updated);
-      
-      setProjects(prev => prev.map(p => p.id === project.id ? mappedProject : p));
-      toast.success(project.isPublic ? 'Made private' : 'Made public');
-    } catch (error: any) {
-      console.error('Failed to update visibility:', error);
-      toast.error(error.response?.data?.message || 'Failed to update visibility');
-    }
+    updateMutation.mutate({
+      id: project.id,
+      payload: { isPublic: !project.isPublic },
+    });
   };
 
-  const handleDrop = async (projectId: string, newStatus: ProjectStatus) => {
-    try {
-      const payload = mapFrontendFormToUpdatePayload({ status: newStatus });
-      const updated = await projectService.update(projectId, payload);
-      const mappedProject = mapBackendProjectToFrontend(updated);
-      
-      setProjects(prev => prev.map(p => p.id === projectId ? mappedProject : p));
-      toast.success('Status updated successfully');
-    } catch (error: any) {
-      console.error('Failed to update status:', error);
-      toast.error(error.response?.data?.message || 'Failed to update status');
-    } finally {
-      setDraggedId(null);
-      setDragOverCol(null);
-    }
+  const handleDrop = (projectId: string, newStatus: ProjectStatus) => {
+    updateMutation.mutate({
+      id: projectId,
+      payload: { status: newStatus },
+    });
+    setDraggedId(null);
+    setDragOverCol(null);
   };
 
   return (
@@ -402,9 +404,11 @@ export default function ProjectsManagement() {
 
             {/* Table rows */}
             {!loading && filtered.map((p) => {
-              const pTasks = tasks.filter((t) => t.projectId === p.id);
-              const progress = getProjectProgress(pTasks);
-              const lead = users.find((u) => u.id === p.teamLeadId);
+              const pTasks = allTasks.filter((t) => t.projectId === p.id);
+              const completedTasks = pTasks.filter(t => t.status === 'DONE').length;
+              const progress = pTasks.length > 0 ? Math.round((completedTasks / pTasks.length) * 100) : 0;
+              const members = allMembers.filter(m => m.projectId === p.id);
+              const lead = members.find(m => m.isTeamLead);
               const ss = statusStyle[p.status];
 
               return (
@@ -415,7 +419,7 @@ export default function ProjectsManagement() {
                 >
                   {/* Name */}
                   <div className="col-span-3 min-w-0">
-                    <p className="text-sm font-semibold text-slate-200 truncate group-hover:text-amber-400 transition-colors">{p.name}</p>
+                    <p className="text-sm font-semibold text-slate-200 truncate group-hover:text-amber-400 transition-colors">{p.title}</p>
                     <p className="text-xs text-slate-600 truncate">{p.description}</p>
                   </div>
 
@@ -442,8 +446,7 @@ export default function ProjectsManagement() {
                   <div className="col-span-1">
                     {lead ? (
                       <Avatar className="h-7 w-7 border-2 border-slate-800">
-                        <AvatarImage src={lead.avatarUrl} />
-                        <AvatarFallback className="text-[0.55rem] bg-amber-500/10 text-amber-400 font-bold">{lead.name[0]}</AvatarFallback>
+                        <AvatarFallback className="text-[0.55rem] bg-amber-500/10 text-amber-400 font-bold">{lead.user.name?.[0] || 'U'}</AvatarFallback>
                       </Avatar>
                     ) : (
                       <span className="text-xs text-slate-600">—</span>
@@ -452,12 +455,12 @@ export default function ProjectsManagement() {
 
                   {/* Start */}
                   <div className="col-span-1">
-                    <span className="text-xs text-slate-500 font-mono">{p.startDate || '—'}</span>
+                    <span className="text-xs text-slate-500 font-mono">{p.startDate.split('T')[0]}</span>
                   </div>
 
                   {/* Due */}
                   <div className="col-span-1">
-                    <span className="text-xs text-slate-500 font-mono">{p.dueDate || '—'}</span>
+                    <span className="text-xs text-slate-500 font-mono">{p.endDate ? p.endDate.split('T')[0] : '—'}</span>
                   </div>
 
                   {/* Visibility */}
@@ -521,9 +524,10 @@ export default function ProjectsManagement() {
                       : "border-slate-800 bg-slate-900/30"
                   }`}>
                     {colProjects.map((p) => {
-                      const pTasks = tasks.filter(t => t.projectId === p.id);
-                      const progress = getProjectProgress(pTasks);
-                      const members = users.filter(u => p.memberIds?.includes(u.id));
+                      const pTasks = allTasks.filter(t => t.projectId === p.id);
+                      const completedTasks = pTasks.filter(t => t.status === 'DONE').length;
+                      const progress = pTasks.length > 0 ? Math.round((completedTasks / pTasks.length) * 100) : 0;
+                      const members = allMembers.filter(m => m.projectId === p.id);
 
                       return (
                         <div
@@ -537,7 +541,7 @@ export default function ProjectsManagement() {
                           }`}
                         >
                           <div className="flex items-start justify-between mb-2">
-                            <p className="text-sm font-semibold text-slate-200 group-hover:text-amber-400 transition-colors leading-tight flex-1 mr-2">{p.name}</p>
+                            <p className="text-sm font-semibold text-slate-200 group-hover:text-amber-400 transition-colors leading-tight flex-1 mr-2">{p.title}</p>
                             <GripVertical className="w-3.5 h-3.5 text-slate-700 flex-shrink-0 mt-0.5" />
                           </div>
                           {p.description && (
@@ -547,8 +551,7 @@ export default function ProjectsManagement() {
                             <div className="flex -space-x-1.5">
                               {members.slice(0, 3).map(m => (
                                 <Avatar key={m.id} className="h-6 w-6 border-2 border-slate-900">
-                                  <AvatarImage src={m.avatarUrl} />
-                                  <AvatarFallback className="text-[0.5rem] bg-amber-500/10 text-amber-400 font-bold">{m.name?.[0]}</AvatarFallback>
+                                  <AvatarFallback className="text-[0.5rem] bg-amber-500/10 text-amber-400 font-bold">{m.user.name?.[0] || 'U'}</AvatarFallback>
                                 </Avatar>
                               ))}
                             </div>
@@ -586,11 +589,11 @@ export default function ProjectsManagement() {
         title={editProject ? 'Edit Project' : 'New Project'}
         footer={
           <>
-            <OutlineBtn onClick={() => setDialogOpen(false)} className={saving ? 'opacity-50 pointer-events-none' : ''}>
+            <OutlineBtn onClick={() => setDialogOpen(false)} className={(createMutation.isPending || updateMutation.isPending) ? 'opacity-50 pointer-events-none' : ''}>
               Cancel
             </OutlineBtn>
-            <PrimaryButton small onClick={handleSave} className={saving ? 'opacity-75' : ''}>
-              {saving ? (
+            <PrimaryButton small onClick={handleSave} className={(createMutation.isPending || updateMutation.isPending) ? 'opacity-75' : ''}>
+              {(createMutation.isPending || updateMutation.isPending) ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   {editProject ? 'Updating...' : 'Creating...'}
