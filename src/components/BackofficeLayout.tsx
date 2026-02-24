@@ -25,7 +25,6 @@ export default function BackofficeLayout() {
     links.push(
       { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/admin/projects', label: 'Projects', icon: FolderKanban },
-      { to: '/admin/tasks', label: 'Tasks', icon: ListTodo },
       { to: '/admin/users', label: 'Users', icon: Users },
       { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText }
     );

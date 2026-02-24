@@ -1,4 +1,4 @@
-import apiService from './api';
+import { apiService } from '@/lib/api';
 
 export interface AuditLogUser {
   id: string;

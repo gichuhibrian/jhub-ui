@@ -1,133 +1,35 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import { useDataStore, getProjectProgress, getTaskProgress } from '@/store/useStore';
-import { Task, TaskStatus, Objective, TASK_STATUS_LABELS, PROJECT_STATUS_LABELS, ProjectStatus } from '@/types';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Plus, Trash2, Edit, Image, Users as UsersIcon, ListTodo, BarChart3, X, ChevronDown, ChevronRight, Calendar, Target, ExternalLink } from 'lucide-react';
-import { toast } from 'sonner';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { projectService } from '@/services/projectService';
+import { taskService } from '@/services/taskService';
+import { userService } from '@/services/userService';
+import { projectMemberService } from '@/services/projectMemberService';
+import { projectImageService } from '@/services/projectImageService';
+import { objectiveService } from '@/services/objectiveService';
+import { ArrowLeft, Users as UsersIcon, ListTodo, BarChart3, Image as ImageIcon, Plus, Trash2, Calendar, Crown, X, Edit } from 'lucide-react';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
+import { PROJECT_STATUS_LABELS, ProjectStatus, TaskStatus, Priority } from '@/types';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { toast } from 'sonner';
 
 // ─── Status Maps ───
-const taskStatusStyle: Record<TaskStatus, { dot: string; bg: string; text: string }> = {
-  'todo': { dot: 'bg-slate-400', bg: 'bg-slate-500/10', text: 'text-slate-400' },
-  'in-progress': { dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-400' },
-  'done': { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
-};
-
 const projectStatusStyle: Record<ProjectStatus, { dot: string; bg: string; text: string }> = {
-  'not-started': { dot: 'bg-slate-500', bg: 'bg-slate-500/10', text: 'text-slate-400' },
-  'in-progress': { dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-400' },
-  'completed': { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
-  'on-hold': { dot: 'bg-rose-400', bg: 'bg-rose-500/10', text: 'text-rose-400' },
+  PLANNING: { dot: 'bg-slate-500', bg: 'bg-slate-500/10', text: 'text-slate-400' },
+  IN_PROGRESS: { dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-400' },
+  COMPLETED: { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
+  ON_HOLD: { dot: 'bg-rose-400', bg: 'bg-rose-500/10', text: 'text-rose-400' },
 };
 
-// ─── Sub-components ───
-function DashCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`bg-slate-900 border border-slate-800 rounded-2xl p-6 transition-all duration-300 hover:border-amber-500/20 ${className}`}>
-      {children}
-    </div>
-  );
-}
-
-function InputField({ label, type = "text", value, onChange, placeholder = "" }: {
-  label: string; type?: string; value: string; onChange: (v: string) => void; placeholder?: string;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-mono text-slate-500 uppercase tracking-widest mb-1.5">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all duration-200"
-        style={{ fontFamily: "inherit" }}
-      />
-    </div>
-  );
-}
-
-function TextareaField({ label, value, onChange, placeholder = "", rows = 3 }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string; rows?: number;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-mono text-slate-500 uppercase tracking-widest mb-1.5">{label}</label>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={rows}
-        className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 resize-y focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all duration-200"
-        style={{ fontFamily: "inherit" }}
-      />
-    </div>
-  );
-}
-
-function SelectField({ label, value, onChange, options, placeholder = "Select..." }: {
-  label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; placeholder?: string;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-mono text-slate-500 uppercase tracking-widest mb-1.5">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all duration-200 appearance-none cursor-pointer"
-        style={{ fontFamily: "inherit" }}
-      >
-        <option value="" className="bg-slate-950 text-slate-500">{placeholder}</option>
-        {options.map(o => (
-          <option key={o.value} value={o.value} className="bg-slate-950 text-slate-200">{o.label}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function PrimaryButton({ children, onClick, className = "", small = false }: {
-  children: React.ReactNode; onClick?: () => void; className?: string; small?: boolean;
-}) {
+// ─── Tab Button ───
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:-translate-y-0.5 hover:shadow-lg hover:shadow-amber-500/25 transition-all duration-300 cursor-pointer border-none ${small ? "px-4 py-2 text-xs" : "px-5 py-2.5 text-sm"} ${className}`}
-      style={{ fontFamily: "inherit" }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function OutlineBtn({ children, onClick, className = "", small = false, danger = false }: {
-  children: React.ReactNode; onClick?: (e?: any) => void; className?: string; small?: boolean; danger?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-lg border bg-transparent cursor-pointer transition-all duration-200 ${
-        danger
-          ? "border-rose-500/30 text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/50"
-          : "border-slate-700 text-slate-400 hover:border-amber-500/40 hover:text-amber-400"
-      } ${small ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"} ${className}`}
-      style={{ fontFamily: "inherit" }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function GhostBtn({ children, onClick, className = "" }: {
-  children: React.ReactNode; onClick?: (e?: any) => void; className?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center justify-center rounded-lg bg-transparent border-none cursor-pointer text-slate-500 hover:text-amber-400 hover:bg-slate-800 transition-all duration-200 w-8 h-8 ${className}`}
-      style={{ fontFamily: "inherit" }}
+      className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer border-none ${
+        active ? 'bg-amber-500/10 text-amber-400' : 'bg-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
+      }`}
+      style={{ fontFamily: 'inherit' }}
     >
       {children}
     </button>
@@ -142,368 +44,413 @@ function Modal({ open, onClose, title, children, footer }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl shadow-black/50">
-        <div className="flex items-center justify-between p-6 pb-0">
+      <div className="relative bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="flex items-center justify-between p-6 pb-4">
           <h2 className="text-lg font-semibold">{title}</h2>
-          <GhostBtn onClick={onClose}><X className="w-4 h-4" /></GhostBtn>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-800 grid place-items-center text-slate-500 hover:text-slate-300 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-6 pt-0">{children}</div>
         {footer && <div className="px-6 pb-6 flex items-center justify-end gap-2">{footer}</div>}
       </div>
     </div>
   );
 }
 
-// ─── Tab Button ───
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer border-none ${
-        active
-          ? "bg-amber-500/10 text-amber-400"
-          : "bg-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/50"
-      }`}
-      style={{ fontFamily: "inherit" }}
-    >
-      {children}
-    </button>
-  );
-}
-
-// ─── Main ───
 export default function AdminProjectDetail() {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { projects, tasks, users, updateProject, addTask, updateTask, deleteTask } = useDataStore();
-  const project = projects.find(p => p.id === projectId);
-  const projectTasks = tasks.filter(t => t.projectId === projectId);
-  const allUsers = users;
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'members' | 'gallery'>('overview');
+  const [addMemberModal, setAddMemberModal] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [addImageModal, setAddImageModal] = useState(false);
+  const [imageUrl, setImageUrl] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'tasks' | 'team' | 'info' | 'gallery'>('tasks');
-  const [taskDialog, setTaskDialog] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [taskForm, setTaskForm] = useState({ title: '', description: '', status: 'todo' as TaskStatus, assignedMemberId: '', dueDate: '' });
-  const [newObjective, setNewObjective] = useState('');
-  const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  // Fetch project data
+  const { data: project, isLoading: projectLoading } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: () => projectService.getById(projectId!),
+    enabled: !!projectId,
+  });
+
+  // Fetch project members
+  const { data: members = [] } = useQuery({
+    queryKey: ['project-members', projectId],
+    queryFn: async () => {
+      const allMembers = await projectMemberService.getAll();
+      return allMembers.filter(m => m.projectId === projectId);
+    },
+    enabled: !!projectId,
+  });
+
+  // Fetch all users for member selection
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => userService.getAll(),
+  });
+
+  // Fetch project images
+  const { data: images = [] } = useQuery({
+    queryKey: ['project-images', projectId],
+    queryFn: async () => {
+      const allImages = await projectImageService.getAll();
+      return allImages.filter(img => img.projectId === projectId);
+    },
+    enabled: !!projectId,
+  });
+
+  // Add member mutation
+  const addMemberMutation = useMutation({
+    mutationFn: (userId: string) => projectMemberService.addMember({ projectId: projectId!, userId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
+      toast.success('Member added to project');
+      setAddMemberModal(false);
+      setSelectedUserId('');
+    },
+    onError: () => toast.error('Failed to add member'),
+  });
+
+  // Remove member mutation
+  const removeMemberMutation = useMutation({
+    mutationFn: (memberId: string) => projectMemberService.removeMember(memberId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
+      toast.success('Member removed from project');
+    },
+    onError: () => toast.error('Failed to remove member'),
+  });
+
+  // Set team lead mutation
+  const setTeamLeadMutation = useMutation({
+    mutationFn: ({ memberId, isTeamLead }: { memberId: string; isTeamLead: boolean }) =>
+      projectMemberService.setTeamLead(memberId, isTeamLead),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
+      toast.success('Team lead updated');
+    },
+    onError: () => toast.error('Failed to update team lead'),
+  });
+
+  // Add image mutation
+  const addImageMutation = useMutation({
+    mutationFn: (url: string) => projectImageService.create({ projectId: projectId!, imageUrl: url }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-images', projectId] });
+      toast.success('Image added');
+      setAddImageModal(false);
+      setImageUrl('');
+    },
+    onError: () => toast.error('Failed to add image'),
+  });
+
+  // Delete image mutation
+  const deleteImageMutation = useMutation({
+    mutationFn: (imageId: string) => projectImageService.delete(imageId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-images', projectId] });
+      toast.success('Image deleted');
+    },
+    onError: () => toast.error('Failed to delete image'),
+  });
+
+  if (projectLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center" style={{ fontFamily: "'Sora', sans-serif" }}>
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-500">Loading project...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!project) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center" style={{ fontFamily: "'Sora', sans-serif" }}>
         <div className="text-center">
           <p className="text-slate-500 mb-4">Project not found.</p>
-          <OutlineBtn onClick={() => navigate('/admin/projects')}>
+          <button
+            onClick={() => navigate('/admin/projects')}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700 text-slate-400 hover:border-amber-500/40 hover:text-amber-400 transition-all"
+          >
             <ArrowLeft className="w-4 h-4" /> Back to Projects
-          </OutlineBtn>
+          </button>
         </div>
       </div>
     );
   }
 
-  const progress = getProjectProgress(projectTasks);
-  const members = allUsers.filter(u => project.memberIds.includes(u.id));
-  const ps = projectStatusStyle[project.status] || projectStatusStyle['not-started'];
-
-  const todoCount = projectTasks.filter(t => t.status === 'todo').length;
-  const inProgressCount = projectTasks.filter(t => t.status === 'in-progress').length;
-  const doneCount = projectTasks.filter(t => t.status === 'done').length;
-
-  const openTaskCreate = () => {
-    setEditingTask(null);
-    setTaskForm({ title: '', description: '', status: 'todo', assignedMemberId: '', dueDate: '' });
-    setTaskDialog(true);
-  };
-
-  const openTaskEdit = (task: Task) => {
-    setEditingTask(task);
-    setTaskForm({ title: task.title, description: task.description, status: task.status, assignedMemberId: task.assignedMemberId, dueDate: task.dueDate });
-    setTaskDialog(true);
-  };
-
-  const handleTaskSave = () => {
-    if (!taskForm.title) return;
-    if (editingTask) {
-      updateTask(editingTask.id, taskForm);
-      toast.success('Task updated');
-    } else {
-      addTask({ id: 't' + Date.now(), projectId: project.id, ...taskForm, objectives: [] });
-      toast.success('Task created');
-    }
-    setTaskDialog(false);
-  };
-
-  const toggleObjective = (taskId: string, objId: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-    const objectives = task.objectives.map(o => o.id === objId ? { ...o, completed: !o.completed } : o);
-    updateTask(taskId, { objectives });
-  };
-
-  const addObjectiveToTask = (taskId: string) => {
-    if (!newObjective.trim()) return;
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-    updateTask(taskId, { objectives: [...task.objectives, { id: 'obj' + Date.now(), title: newObjective, completed: false }] });
-    setNewObjective('');
-  };
-
-  const removeObjective = (taskId: string, objId: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-    updateTask(taskId, { objectives: task.objectives.filter(o => o.id !== objId) });
-  };
-
-  const toggleMember = (userId: string) => {
-    const mids = project.memberIds.includes(userId) ? project.memberIds.filter(id => id !== userId) : [...project.memberIds, userId];
-    updateProject(project.id, { memberIds: mids });
-  };
+  const ps = projectStatusStyle[project.status] || projectStatusStyle.PLANNING;
+  const availableUsers = allUsers.filter(u => !members.some(m => m.userId === u.id));
+  const teamLead = members.find(m => m.isTeamLead);
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-950 text-slate-200" style={{ fontFamily: "'Sora', sans-serif" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
-      <style>{`
-        @keyframes hub-float1 { 0%,100% { transform:translate(0,0); } 33% { transform:translate(40px,-30px); } 66% { transform:translate(-20px,40px); } }
-        @keyframes hub-float2 { 0%,100% { transform:translate(0,0); } 33% { transform:translate(-30px,40px); } 66% { transform:translate(30px,-20px); } }
-        .font-mono { font-family: 'DM Mono', monospace !important; }
-      `}</style>
+      <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 
-      {/* ── Ambient BG ── */}
+      {/* Ambient BG */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute inset-0 opacity-5" style={{
-          backgroundImage: "linear-gradient(rgb(51,65,85) 1px, transparent 1px), linear-gradient(90deg, rgb(51,65,85) 1px, transparent 1px)",
-          backgroundSize: "64px 64px",
-          maskImage: "radial-gradient(ellipse 70% 50% at 50% 30%, black 10%, transparent 70%)",
-          WebkitMaskImage: "radial-gradient(ellipse 70% 50% at 50% 30%, black 10%, transparent 70%)",
+          backgroundImage: 'linear-gradient(rgb(51,65,85) 1px, transparent 1px), linear-gradient(90deg, rgb(51,65,85) 1px, transparent 1px)',
+          backgroundSize: '64px 64px',
         }} />
-        <div className="absolute w-[600px] h-[600px] rounded-full -top-52 -left-24 bg-amber-500/5 blur-[140px]" style={{ animation: "hub-float1 22s ease-in-out infinite" }} />
-        <div className="absolute w-[500px] h-[500px] rounded-full -bottom-52 -right-24 bg-orange-500/5 blur-[140px]" style={{ animation: "hub-float2 26s ease-in-out infinite" }} />
       </div>
 
-      {/* ── Content ── */}
-      <div className="relative z-10 max-w-screen-xl mx-auto px-6 py-10">
-
-        {/* ── Header ── */}
+      <div className="relative z-10 max-w-screen-2xl mx-auto px-6 py-10">
+        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-8">
           <button
             onClick={() => navigate('/admin/projects')}
-            className="w-10 h-10 rounded-xl border border-slate-800 bg-transparent grid place-items-center text-slate-400 hover:border-amber-500/40 hover:text-amber-400 transition-all duration-200 cursor-pointer flex-shrink-0"
-            style={{ fontFamily: "inherit" }}
+            className="w-10 h-10 rounded-xl border border-slate-800 bg-transparent grid place-items-center text-slate-400 hover:border-amber-500/40 hover:text-amber-400 transition-all flex-shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap mb-1">
-              <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">{project.name}</h1>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium font-mono uppercase tracking-wide ${ps.bg} ${ps.text}`}>
+              <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">{project.title}</h1>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium uppercase ${ps.bg} ${ps.text}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${ps.dot}`} />
                 {PROJECT_STATUS_LABELS[project.status]}
               </span>
-              <span className={`px-2.5 py-1 rounded-full text-xs font-mono uppercase tracking-wide ${project.isPublic ? "bg-sky-500/10 text-sky-400" : "bg-slate-500/10 text-slate-500"}`}>
-                {project.isPublic ? "Public" : "Private"}
+              <span className={`px-2.5 py-1 rounded-full text-xs uppercase ${project.isPublic ? 'bg-sky-500/10 text-sky-400' : 'bg-slate-500/10 text-slate-500'}`}>
+                {project.isPublic ? 'Public' : 'Private'}
               </span>
             </div>
-            <p className="text-sm text-slate-500 truncate">{project.description}</p>
+            {project.description && <p className="text-sm text-slate-500 line-clamp-2">{project.description}</p>}
           </div>
         </div>
 
-        {/* ── Stats Row ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <DashCard className="p-5">
-            <div className="text-xs text-slate-500 font-mono uppercase tracking-widest mb-2">Progress</div>
-            <div className="text-3xl font-extrabold bg-gradient-to-br from-amber-400 to-orange-500 bg-clip-text text-transparent mb-2">{progress}%</div>
-            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-1000" style={{ width: `${progress}%` }} />
-            </div>
-          </DashCard>
-          <DashCard className="p-5">
-            <div className="text-xs text-slate-500 font-mono uppercase tracking-widest mb-2">Tasks</div>
-            <div className="text-3xl font-extrabold text-slate-100">{projectTasks.length}</div>
-            <div className="text-xs text-slate-500 mt-1">{doneCount} completed</div>
-          </DashCard>
-          <DashCard className="p-5">
-            <div className="text-xs text-slate-500 font-mono uppercase tracking-widest mb-2">Breakdown</div>
-            <div className="flex items-center gap-3 mt-1">
-              {[
-                { label: "Todo", count: todoCount, color: "bg-slate-600" },
-                { label: "Active", count: inProgressCount, color: "bg-amber-500" },
-                { label: "Done", count: doneCount, color: "bg-emerald-500" },
-              ].map(s => (
-                <div key={s.label} className="flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${s.color}`} />
-                  <span className="text-xs text-slate-400">{s.count}</span>
-                </div>
-              ))}
-            </div>
-            {projectTasks.length > 0 && (
-              <div className="flex h-1.5 rounded-full overflow-hidden mt-3 bg-slate-800">
-                {todoCount > 0 && <div className="bg-slate-600 transition-all" style={{ width: `${(todoCount / projectTasks.length) * 100}%` }} />}
-                {inProgressCount > 0 && <div className="bg-amber-500 transition-all" style={{ width: `${(inProgressCount / projectTasks.length) * 100}%` }} />}
-                {doneCount > 0 && <div className="bg-emerald-500 transition-all" style={{ width: `${(doneCount / projectTasks.length) * 100}%` }} />}
-              </div>
-            )}
-          </DashCard>
-          <DashCard className="p-5">
-            <div className="text-xs text-slate-500 font-mono uppercase tracking-widest mb-2">Team</div>
-            <div className="flex -space-x-2 mt-1">
-              {members.slice(0, 5).map(m => (
-                <Avatar key={m.id} className="h-8 w-8 border-2 border-slate-900">
-                  <AvatarImage src={m.avatarUrl} />
-                  <AvatarFallback className="text-[0.6rem] bg-amber-500/10 text-amber-400 font-bold">{m.name?.[0]}</AvatarFallback>
-                </Avatar>
-              ))}
-              {members.length > 5 && (
-                <div className="w-8 h-8 rounded-full border-2 border-slate-900 bg-slate-800 grid place-items-center text-[0.6rem] text-slate-400 font-mono font-bold">
-                  +{members.length - 5}
-                </div>
-              )}
-            </div>
-            <div className="text-xs text-slate-500 mt-2">{members.length} member{members.length !== 1 ? 's' : ''}</div>
-          </DashCard>
-        </div>
-
-        {/* ── Tabs ── */}
+        {/* Tabs */}
         <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800 w-fit mb-8">
+          <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>
+            <BarChart3 className="w-3.5 h-3.5" /> Overview
+          </TabButton>
           <TabButton active={activeTab === 'tasks'} onClick={() => setActiveTab('tasks')}>
             <ListTodo className="w-3.5 h-3.5" /> Tasks
           </TabButton>
-          <TabButton active={activeTab === 'team'} onClick={() => setActiveTab('team')}>
-            <UsersIcon className="w-3.5 h-3.5" /> Team
-          </TabButton>
-          <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')}>
-            <BarChart3 className="w-3.5 h-3.5" /> Info
+          <TabButton active={activeTab === 'members'} onClick={() => setActiveTab('members')}>
+            <UsersIcon className="w-3.5 h-3.5" /> Members
           </TabButton>
           <TabButton active={activeTab === 'gallery'} onClick={() => setActiveTab('gallery')}>
-            <Image className="w-3.5 h-3.5" /> Gallery
+            <ImageIcon className="w-3.5 h-3.5" /> Gallery
           </TabButton>
         </div>
 
-        {/* ═══ TASKS TAB ═══ */}
+        {/* OVERVIEW TAB */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+              <h2 className="text-lg font-semibold mb-4">Project Information</h2>
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">Title</div>
+                  <div className="text-slate-200">{project.title}</div>
+                </div>
+                {project.description && (
+                  <div>
+                    <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">Description</div>
+                    <div className="text-slate-200">{project.description}</div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  {project.startDate && (
+                    <div>
+                      <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">Start Date</div>
+                      <div className="text-slate-200 flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-slate-500" />
+                        {new Date(project.startDate).toLocaleDateString()}
+                      </div>
+                    </div>
+                  )}
+                  {project.endDate && (
+                    <div>
+                      <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">End Date</div>
+                      <div className="text-slate-200 flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-slate-500" />
+                        {new Date(project.endDate).toLocaleDateString()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {(project.siteUrl || project.githubUrl) && (
+                  <div className="grid grid-cols-2 gap-4">
+                    {project.siteUrl && (
+                      <div>
+                        <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">Site URL</div>
+                        <a href={project.siteUrl} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300 text-sm">
+                          {project.siteUrl}
+                        </a>
+                      </div>
+                    )}
+                    {project.githubUrl && (
+                      <div>
+                        <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">GitHub URL</div>
+                        <a href={project.githubUrl} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300 text-sm">
+                          {project.githubUrl}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Team Lead */}
+            {teamLead && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <h2 className="text-lg font-semibold mb-4">Team Lead</h2>
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-10 w-10 border-2 border-amber-500/20">
+                    <AvatarFallback className="bg-amber-500/10 text-amber-400 font-bold">
+                      {teamLead.user.name?.[0] || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <div className="font-medium">{teamLead.user.name}</div>
+                    <div className="text-sm text-slate-500">{teamLead.user.email}</div>
+                  </div>
+                  <Crown className="w-4 h-4 text-amber-400 ml-auto" />
+                </div>
+              </div>
+            )}
+
+            {/* Quick Stats */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Members</div>
+                <div className="text-3xl font-bold text-slate-100">{members.length}</div>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Images</div>
+                <div className="text-3xl font-bold text-slate-100">{images.length}</div>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Status</div>
+                <div className={`text-sm font-medium ${ps.text}`}>{PROJECT_STATUS_LABELS[project.status]}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TASKS TAB */}
         {activeTab === 'tasks' && (
           <div>
             <KanbanBoard projectId={projectId} />
           </div>
         )}
 
-        {/* ═══ TEAM TAB ═══ */}
-        {activeTab === 'team' && (
+        {/* MEMBERS TAB */}
+        {activeTab === 'members' && (
           <div>
-            <h2 className="text-lg font-semibold mb-5">Team Members</h2>
-            <DashCard className="mb-6">
-              <SelectField
-                label="Team Lead"
-                value={project.teamLeadId}
-                onChange={(v) => {
-                  const newMemberIds = project.memberIds.includes(v) ? project.memberIds : [...project.memberIds, v];
-                  updateProject(project.id, { teamLeadId: v, memberIds: newMemberIds });
-                }}
-                options={allUsers.filter(u => u.role === 'user').map(u => ({ value: u.id, label: u.name }))}
-                placeholder="Select lead..."
-              />
-            </DashCard>
-            <div className="text-xs font-mono text-slate-500 uppercase tracking-widest mb-3">Members</div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {allUsers.filter(u => u.role === 'user').map(u => {
-                const isMember = project.memberIds.includes(u.id);
-                const isLead = u.id === project.teamLeadId;
-                return (
-                  <div
-                    key={u.id}
-                    onClick={() => toggleMember(u.id)}
-                    className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all duration-200 ${
-                      isMember
-                        ? "border-amber-500/30 bg-amber-500/5"
-                        : "border-slate-800 bg-slate-900 hover:border-slate-700"
-                    }`}
-                  >
-                    <div className={`w-5 h-5 rounded border-2 flex-shrink-0 grid place-items-center transition-all ${
-                      isMember ? "bg-amber-500 border-amber-500 text-white" : "border-slate-700 bg-transparent"
-                    }`}>
-                      {isMember && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold">Project Members ({members.length})</h2>
+              <button
+                onClick={() => setAddMemberModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all"
+              >
+                <Plus className="w-4 h-4" /> Add Member
+              </button>
+            </div>
+
+            <div className="grid gap-3">
+              {members.map((member) => (
+                <div key={member.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
+                  <Avatar className="h-10 w-10 border-2 border-slate-800">
+                    <AvatarFallback className="bg-amber-500/10 text-amber-400 font-bold">
+                      {member.user.name?.[0] || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="font-medium flex items-center gap-2">
+                      {member.user.name}
+                      {member.isTeamLead && (
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-amber-500/10 text-amber-400 flex items-center gap-1">
+                          <Crown className="w-3 h-3" /> Team Lead
+                        </span>
                       )}
                     </div>
-                    <Avatar className="h-8 w-8 border-2 border-slate-800">
-                      <AvatarImage src={u.avatarUrl} />
-                      <AvatarFallback className="text-[0.6rem] bg-amber-500/10 text-amber-400 font-bold">{u.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm font-medium flex-1">{u.name}</span>
-                    {isLead && (
-                      <span className="px-2 py-0.5 rounded-full text-[0.6rem] font-mono uppercase tracking-wide bg-amber-500/10 text-amber-400">Lead</span>
-                    )}
+                    <div className="text-sm text-slate-500">{member.user.email}</div>
                   </div>
-                );
-              })}
+                  <div className="flex items-center gap-2">
+                    {!member.isTeamLead && (
+                      <button
+                        onClick={() => setTeamLeadMutation.mutate({ memberId: member.id, isTeamLead: true })}
+                        className="px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:border-amber-500/40 hover:text-amber-400 text-sm transition-all"
+                      >
+                        Make Lead
+                      </button>
+                    )}
+                    {member.isTeamLead && (
+                      <button
+                        onClick={() => setTeamLeadMutation.mutate({ memberId: member.id, isTeamLead: false })}
+                        className="px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:border-amber-500/40 hover:text-amber-400 text-sm transition-all"
+                      >
+                        Remove Lead
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (confirm('Remove this member from the project?')) {
+                          removeMemberMutation.mutate(member.id);
+                        }
+                      }}
+                      className="p-2 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {members.length === 0 && (
+                <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-xl">
+                  <UsersIcon className="w-8 h-8 text-slate-700 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500">No members yet. Add members to get started.</p>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* ═══ INFO TAB ═══ */}
-        {activeTab === 'info' && (
-          <DashCard>
-            <div className="space-y-5">
-              <InputField label="Project Name" value={project.name} onChange={(v) => updateProject(project.id, { name: v })} />
-              <TextareaField label="Description" value={project.description} onChange={(v) => updateProject(project.id, { description: v })} />
-              <div className="grid grid-cols-2 gap-4">
-                <SelectField
-                  label="Status"
-                  value={project.status}
-                  onChange={(v) => updateProject(project.id, { status: v as ProjectStatus })}
-                  options={(['not-started', 'in-progress', 'completed', 'on-hold'] as ProjectStatus[]).map(s => ({ value: s, label: PROJECT_STATUS_LABELS[s] }))}
-                />
-                <div>
-                  <label className="block text-xs font-mono text-slate-500 uppercase tracking-widest mb-1.5">Visibility</label>
-                  <div className="flex items-center gap-3 h-[42px]">
-                    <Switch checked={project.isPublic} onCheckedChange={(c) => updateProject(project.id, { isPublic: c })} />
-                    <span className="text-sm text-slate-400">{project.isPublic ? "Public" : "Private"}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <InputField label="Start Date" type="date" value={project.startDate} onChange={(v) => updateProject(project.id, { startDate: v })} />
-                <InputField label="Due Date" type="date" value={project.dueDate} onChange={(v) => updateProject(project.id, { dueDate: v })} />
-              </div>
-            </div>
-          </DashCard>
-        )}
-
-        {/* ═══ GALLERY TAB ═══ */}
+        {/* GALLERY TAB */}
         {activeTab === 'gallery' && (
           <div>
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">Images</h2>
-              <OutlineBtn small onClick={() => {
-                const url = prompt('Enter image URL:');
-                if (url) {
-                  updateProject(project.id, { images: [...project.images, url], featuredImage: project.featuredImage || url });
-                  toast.success('Image added');
-                }
-              }}>
-                <Plus className="w-3.5 h-3.5" /> Add Image
-              </OutlineBtn>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold">Project Gallery ({images.length})</h2>
+              <button
+                onClick={() => setAddImageModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all"
+              >
+                <Plus className="w-4 h-4" /> Add Image
+              </button>
             </div>
+
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {project.images.map((img, i) => (
-                <div key={i} className="relative group aspect-video rounded-xl overflow-hidden border border-slate-800 hover:border-amber-500/30 transition-all">
-                  <img src={img} alt="" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-                    <OutlineBtn small onClick={() => { updateProject(project.id, { featuredImage: img }); toast.success('Featured image set'); }}>
-                      {project.featuredImage === img ? '★ Featured' : 'Set Featured'}
-                    </OutlineBtn>
-                    <OutlineBtn small danger onClick={() => updateProject(project.id, { images: project.images.filter((_, j) => j !== i) })}>
-                      <Trash2 className="w-3 h-3" />
-                    </OutlineBtn>
+              {images.map((img) => (
+                <div key={img.id} className="relative group aspect-video rounded-xl overflow-hidden border border-slate-800 hover:border-amber-500/30 transition-all">
+                  <img src={img.imageUrl} alt="" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <button
+                      onClick={() => {
+                        if (confirm('Delete this image?')) {
+                          deleteImageMutation.mutate(img.id);
+                        }
+                      }}
+                      className="px-3 py-2 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:bg-rose-500/30 transition-all flex items-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete
+                    </button>
                   </div>
-                  {project.featuredImage === img && (
-                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[0.6rem] font-mono uppercase tracking-wide bg-amber-500/20 text-amber-400 backdrop-blur-sm border border-amber-500/20">
-                      ★ Featured
-                    </div>
-                  )}
                 </div>
               ))}
-              {project.images.length === 0 && (
-                <div className="col-span-full text-center py-16">
-                  <Image className="w-8 h-8 text-slate-700 mx-auto mb-3" />
-                  <p className="text-sm text-slate-500">No images yet.</p>
+
+              {images.length === 0 && (
+                <div className="col-span-full text-center py-16 bg-slate-900 border border-slate-800 rounded-xl">
+                  <ImageIcon className="w-8 h-8 text-slate-700 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500">No images yet. Add images to showcase your project.</p>
                 </div>
               )}
             </div>
@@ -511,37 +458,92 @@ export default function AdminProjectDetail() {
         )}
       </div>
 
-      {/* ═══ TASK DIALOG ═══ */}
+      {/* Add Member Modal */}
       <Modal
-        open={taskDialog}
-        onClose={() => setTaskDialog(false)}
-        title={editingTask ? 'Edit Task' : 'New Task'}
+        open={addMemberModal}
+        onClose={() => setAddMemberModal(false)}
+        title="Add Member to Project"
         footer={
           <>
-            <OutlineBtn onClick={() => setTaskDialog(false)}>Cancel</OutlineBtn>
-            <PrimaryButton small onClick={handleTaskSave}>{editingTask ? 'Update' : 'Create'}</PrimaryButton>
+            <button
+              onClick={() => setAddMemberModal(false)}
+              className="px-4 py-2 rounded-lg border border-slate-700 text-slate-400 hover:border-slate-600 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => selectedUserId && addMemberMutation.mutate(selectedUserId)}
+              disabled={!selectedUserId}
+              className="px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add Member
+            </button>
           </>
         }
       >
         <div className="space-y-4">
-          <InputField label="Title" value={taskForm.title} onChange={(v) => setTaskForm({ ...taskForm, title: v })} placeholder="Task title" />
-          <TextareaField label="Description" value={taskForm.description} onChange={(v) => setTaskForm({ ...taskForm, description: v })} placeholder="Describe the task..." />
-          <div className="grid grid-cols-2 gap-4">
-            <SelectField
-              label="Status"
-              value={taskForm.status}
-              onChange={(v) => setTaskForm({ ...taskForm, status: v as TaskStatus })}
-              options={(['todo', 'in-progress', 'done'] as TaskStatus[]).map(s => ({ value: s, label: TASK_STATUS_LABELS[s] }))}
-            />
-            <SelectField
-              label="Assignee"
-              value={taskForm.assignedMemberId}
-              onChange={(v) => setTaskForm({ ...taskForm, assignedMemberId: v })}
-              options={members.map(u => ({ value: u.id, label: u.name }))}
-              placeholder="Select member..."
+          <div>
+            <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Select User</label>
+            <select
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none"
+            >
+              <option value="">Select a user...</option>
+              {availableUsers.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name} ({user.email})
+                </option>
+              ))}
+            </select>
+          </div>
+          {availableUsers.length === 0 && (
+            <p className="text-sm text-slate-500">All users are already members of this project.</p>
+          )}
+        </div>
+      </Modal>
+
+      {/* Add Image Modal */}
+      <Modal
+        open={addImageModal}
+        onClose={() => setAddImageModal(false)}
+        title="Add Image to Gallery"
+        footer={
+          <>
+            <button
+              onClick={() => setAddImageModal(false)}
+              className="px-4 py-2 rounded-lg border border-slate-700 text-slate-400 hover:border-slate-600 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => imageUrl && addImageMutation.mutate(imageUrl)}
+              disabled={!imageUrl}
+              className="px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add Image
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Image URL</label>
+            <input
+              type="url"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://example.com/image.jpg"
+              className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none"
             />
           </div>
-          <InputField label="Due Date" type="date" value={taskForm.dueDate} onChange={(v) => setTaskForm({ ...taskForm, dueDate: v })} />
+          {imageUrl && (
+            <div className="aspect-video rounded-lg overflow-hidden border border-slate-800">
+              <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" onError={(e) => {
+                e.currentTarget.src = 'https://via.placeholder.com/400x300?text=Invalid+URL';
+              }} />
+            </div>
+          )}
         </div>
       </Modal>
     </div>
