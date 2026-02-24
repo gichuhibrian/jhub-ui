@@ -1,12 +1,27 @@
-import { useState } from 'react';
-import { useDataStore } from '@/store/useStore';
-import { User, UserRole } from '@/types';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Plus, Search, Trash2, Edit, Users, Shield, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { userService, UserResponse, UserType, CreateUserPayload, UpdateUserPayload } from '@/services/userService';
+import { projectMemberService } from '@/services/projectMemberService';
+import { taskService } from '@/services/taskService';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Plus, Search, Trash2, Edit, Users, Shield, ChevronDown, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+// ─── Role style maps ───
+const ROLE_BADGE_CLASSES: Record<UserType, string> = {
+  ADMIN: 'bg-violet-500/10 text-violet-400',
+  MEMBER: 'bg-sky-500/10 text-sky-400',
+  CLIENT: 'bg-emerald-500/10 text-emerald-400',
+};
+const ROLE_DOT_CLASSES: Record<UserType, string> = {
+  ADMIN: 'bg-violet-400',
+  MEMBER: 'bg-sky-400',
+  CLIENT: 'bg-emerald-400',
+};
+const ALL_ROLES: UserType[] = ['ADMIN', 'MEMBER', 'CLIENT'];
+
 // ─── Sub-components (shared design tokens) ───
-function InputField({ label, type = "text", value, onChange, placeholder = "" }: {
+function InputField({ label, type = 'text', value, onChange, placeholder = '' }: {
   label: string; type?: string; value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
   return (
@@ -15,7 +30,7 @@ function InputField({ label, type = "text", value, onChange, placeholder = "" }:
       <input
         type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
         className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all duration-200"
-        style={{ fontFamily: "inherit" }}
+        style={{ fontFamily: 'inherit' }}
       />
     </div>
   );
@@ -30,7 +45,7 @@ function SelectField({ label, value, onChange, options }: {
       <select
         value={value} onChange={(e) => onChange(e.target.value)}
         className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all duration-200 appearance-none cursor-pointer"
-        style={{ fontFamily: "inherit" }}
+        style={{ fontFamily: 'inherit' }}
       >
         {options.map(o => <option key={o.value} value={o.value} className="bg-slate-950">{o.label}</option>)}
       </select>
@@ -38,35 +53,46 @@ function SelectField({ label, value, onChange, options }: {
   );
 }
 
-function PrimaryButton({ children, onClick, className = "", small = false }: {
-  children: React.ReactNode; onClick?: () => void; className?: string; small?: boolean;
+function PrimaryButton({ children, onClick, className = '', small = false, disabled = false }: {
+  children: React.ReactNode; onClick?: () => void; className?: string; small?: boolean; disabled?: boolean;
 }) {
   return (
-    <button onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:-translate-y-0.5 hover:shadow-lg hover:shadow-amber-500/25 transition-all duration-300 cursor-pointer border-none ${small ? "px-4 py-2 text-xs" : "px-5 py-2.5 text-sm"} ${className}`}
-      style={{ fontFamily: "inherit" }}
+    <button onClick={onClick} disabled={disabled}
+      className={`inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:-translate-y-0.5 hover:shadow-lg hover:shadow-amber-500/25 transition-all duration-300 cursor-pointer border-none disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 ${small ? 'px-4 py-2 text-xs' : 'px-5 py-2.5 text-sm'} ${className}`}
+      style={{ fontFamily: 'inherit' }}
     >{children}</button>
   );
 }
 
-function OutlineBtn({ children, onClick, className = "", small = false }: {
-  children: React.ReactNode; onClick?: (e?: any) => void; className?: string; small?: boolean;
+function DangerButton({ children, onClick, className = '', small = false, disabled = false }: {
+  children: React.ReactNode; onClick?: () => void; className?: string; small?: boolean; disabled?: boolean;
 }) {
   return (
-    <button onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-transparent text-slate-400 hover:border-amber-500/40 hover:text-amber-400 cursor-pointer transition-all duration-200 ${small ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"} ${className}`}
-      style={{ fontFamily: "inherit" }}
+    <button onClick={onClick} disabled={disabled}
+      className={`inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 text-white font-semibold hover:-translate-y-0.5 hover:shadow-lg hover:shadow-rose-500/25 transition-all duration-300 cursor-pointer border-none disabled:opacity-50 disabled:cursor-not-allowed ${small ? 'px-4 py-2 text-xs' : 'px-5 py-2.5 text-sm'} ${className}`}
+      style={{ fontFamily: 'inherit' }}
     >{children}</button>
   );
 }
 
-function GhostBtn({ children, onClick, className = "" }: {
-  children: React.ReactNode; onClick?: (e?: any) => void; className?: string;
+function OutlineBtn({ children, onClick, className = '', small = false }: {
+  children: React.ReactNode; onClick?: (e?: React.MouseEvent) => void; className?: string; small?: boolean;
+}) {
+  return (
+    <button onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-transparent text-slate-400 hover:border-amber-500/40 hover:text-amber-400 cursor-pointer transition-all duration-200 ${small ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'} ${className}`}
+      style={{ fontFamily: 'inherit' }}
+    >{children}</button>
+  );
+}
+
+function GhostBtn({ children, onClick, className = '' }: {
+  children: React.ReactNode; onClick?: (e?: React.MouseEvent) => void; className?: string;
 }) {
   return (
     <button onClick={onClick}
       className={`inline-flex items-center justify-center rounded-lg bg-transparent border-none cursor-pointer text-slate-500 hover:text-amber-400 hover:bg-slate-800 transition-all duration-200 w-8 h-8 ${className}`}
-      style={{ fontFamily: "inherit" }}
+      style={{ fontFamily: 'inherit' }}
     >{children}</button>
   );
 }
@@ -98,51 +124,144 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── Form state ───
+interface UserForm {
+  name: string;
+  email: string;
+  password: string;
+  userType: UserType;
+}
+
+const DEFAULT_FORM: UserForm = { name: '', email: '', password: '', userType: 'MEMBER' };
+
 // ─── Main ───
 export default function UsersManagement() {
-  const { users, projects, addUser, updateUser, deleteUser } = useDataStore();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'user' as UserRole });
+  const [editingUser, setEditingUser] = useState<UserResponse | null>(null);
+  const [form, setForm] = useState<UserForm>(DEFAULT_FORM);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [roleDropdownId, setRoleDropdownId] = useState<string | null>(null);
+
+  // ── Data queries ──
+  const { data: users = [], isLoading, error } = useQuery({
+    queryKey: ['users'],
+    queryFn: userService.getAll,
+  });
+
+  const { data: allMembers = [] } = useQuery({
+    queryKey: ['project-members'],
+    queryFn: projectMemberService.getAll,
+  });
+
+  const { data: allTasks = [] } = useQuery({
+    queryKey: ['tasks'],
+    queryFn: taskService.getAll,
+  });
+
+  // ── Close role dropdown on outside click ──
+  useEffect(() => {
+    if (!roleDropdownId) return;
+    const handler = () => setRoleDropdownId(null);
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, [roleDropdownId]);
+
+  // ── Derived stats ──
+  const userProjectCount = (userId: string) =>
+    allMembers.filter(m => m.userId === userId).length;
+
+  const userTaskCount = (userId: string) =>
+    allTasks.filter(t => t.userId === userId).length;
+
+  const adminCount = users.filter(u => u.userType === 'ADMIN').length;
+  const memberCount = users.filter(u => u.userType === 'MEMBER').length;
 
   const filtered = users.filter(u =>
-    u.name.toLowerCase().includes(search.toLowerCase()) ||
+    (u.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
     u.email.toLowerCase().includes(search.toLowerCase())
   );
 
+  // ── Mutations ──
+  const createMutation = useMutation({
+    mutationFn: (data: CreateUserPayload) => userService.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('User created successfully');
+      setDialogOpen(false);
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      const msg = err.response?.data?.message ?? 'Failed to create user';
+      toast.error(Array.isArray(msg) ? msg[0] : msg);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateUserPayload }) =>
+      userService.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('User updated');
+      setDialogOpen(false);
+    },
+    onError: () => toast.error('Failed to update user'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => userService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('User deleted');
+      setConfirmDeleteId(null);
+    },
+    onError: () => toast.error('Failed to delete user'),
+  });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: ({ id, userType }: { id: string; userType: UserType }) =>
+      userService.updateRole(id, userType),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('Role updated');
+      setRoleDropdownId(null);
+    },
+    onError: () => toast.error('Failed to update role'),
+  });
+
+  // ── Handlers ──
   const openCreate = () => {
     setEditingUser(null);
-    setForm({ name: '', email: '', password: 'user123', role: 'user' });
+    setForm(DEFAULT_FORM);
     setDialogOpen(true);
   };
 
-  const openEdit = (u: User) => {
+  const openEdit = (u: UserResponse) => {
     setEditingUser(u);
-    setForm({ name: u.name, email: u.email, password: u.password, role: u.role });
+    setForm({ name: u.name ?? '', email: u.email, password: '', userType: u.userType });
     setDialogOpen(true);
   };
 
   const handleSave = () => {
-    if (!form.name || !form.email) return;
+    if (!form.name.trim() || !form.email.trim()) return;
     if (editingUser) {
-      updateUser(editingUser.id, form);
-      toast.success('User updated');
+      updateMutation.mutate({
+        id: editingUser.id,
+        data: { name: form.name, email: form.email, userType: form.userType },
+      });
     } else {
-      addUser({ id: 'u' + Date.now(), ...form, avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${form.name.replace(/\s/g, '')}` });
-      toast.success('User created');
+      if (!form.password.trim()) return;
+      createMutation.mutate({ name: form.name, email: form.email, password: form.password, userType: form.userType });
     }
-    setDialogOpen(false);
   };
 
-  const handleDelete = (id: string, e?: any) => {
-    e?.stopPropagation();
-    deleteUser(id);
-    toast.success('User deleted');
+  const handleRoleChange = (id: string, userType: UserType, e: React.MouseEvent) => {
+    e.stopPropagation();
+    updateRoleMutation.mutate({ id, userType });
   };
 
-  const adminCount = users.filter(u => u.role === 'admin').length;
-  const userCount = users.filter(u => u.role === 'user').length;
+  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isDeleting = deleteMutation.isPending;
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-950 text-slate-200" style={{ fontFamily: "'Sora', sans-serif" }}>
@@ -156,13 +275,13 @@ export default function UsersManagement() {
       {/* ── Ambient BG ── */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute inset-0 opacity-5" style={{
-          backgroundImage: "linear-gradient(rgb(51,65,85) 1px, transparent 1px), linear-gradient(90deg, rgb(51,65,85) 1px, transparent 1px)",
-          backgroundSize: "64px 64px",
-          maskImage: "radial-gradient(ellipse 70% 50% at 50% 30%, black 10%, transparent 70%)",
-          WebkitMaskImage: "radial-gradient(ellipse 70% 50% at 50% 30%, black 10%, transparent 70%)",
+          backgroundImage: 'linear-gradient(rgb(51,65,85) 1px, transparent 1px), linear-gradient(90deg, rgb(51,65,85) 1px, transparent 1px)',
+          backgroundSize: '64px 64px',
+          maskImage: 'radial-gradient(ellipse 70% 50% at 50% 30%, black 10%, transparent 70%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 70% 50% at 50% 30%, black 10%, transparent 70%)',
         }} />
-        <div className="absolute w-[600px] h-[600px] rounded-full -top-52 -left-24 bg-amber-500/5 blur-[140px]" style={{ animation: "hub-float1 22s ease-in-out infinite" }} />
-        <div className="absolute w-[500px] h-[500px] rounded-full -bottom-52 -right-24 bg-orange-500/5 blur-[140px]" style={{ animation: "hub-float2 26s ease-in-out infinite" }} />
+        <div className="absolute w-[600px] h-[600px] rounded-full -top-52 -left-24 bg-amber-500/5 blur-[140px]" style={{ animation: 'hub-float1 22s ease-in-out infinite' }} />
+        <div className="absolute w-[500px] h-[500px] rounded-full -bottom-52 -right-24 bg-orange-500/5 blur-[140px]" style={{ animation: 'hub-float2 26s ease-in-out infinite' }} />
       </div>
 
       {/* ── Content ── */}
@@ -188,7 +307,9 @@ export default function UsersManagement() {
                 <Users className="w-5 h-5 text-amber-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold bg-gradient-to-br from-amber-400 to-orange-500 bg-clip-text text-transparent">{users.length}</div>
+                <div className="text-2xl font-bold bg-gradient-to-br from-amber-400 to-orange-500 bg-clip-text text-transparent">
+                  {isLoading ? '—' : users.length}
+                </div>
                 <div className="text-xs text-slate-500 font-mono uppercase tracking-widest">Total</div>
               </div>
             </div>
@@ -199,7 +320,7 @@ export default function UsersManagement() {
                 <Shield className="w-5 h-5 text-violet-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-slate-100">{adminCount}</div>
+                <div className="text-2xl font-bold text-slate-100">{isLoading ? '—' : adminCount}</div>
                 <div className="text-xs text-slate-500 font-mono uppercase tracking-widest">Admins</div>
               </div>
             </div>
@@ -210,7 +331,7 @@ export default function UsersManagement() {
                 <Users className="w-5 h-5 text-sky-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-slate-100">{userCount}</div>
+                <div className="text-2xl font-bold text-slate-100">{isLoading ? '—' : memberCount}</div>
                 <div className="text-xs text-slate-500 font-mono uppercase tracking-widest">Members</div>
               </div>
             </div>
@@ -225,7 +346,7 @@ export default function UsersManagement() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all duration-200"
-            style={{ fontFamily: "inherit" }}
+            style={{ fontFamily: 'inherit' }}
           />
         </div>
 
@@ -234,14 +355,30 @@ export default function UsersManagement() {
           {/* Header */}
           <div className="grid grid-cols-12 gap-4 px-5 py-3 border-b border-slate-800 text-xs font-mono text-slate-500 uppercase tracking-widest">
             <div className="col-span-4">User</div>
-            <div className="col-span-3">Email</div>
+            <div className="col-span-2">Email</div>
             <div className="col-span-2">Role</div>
-            <div className="col-span-1">Projects</div>
+            <div className="col-span-1 text-center">Projects</div>
+            <div className="col-span-1 text-center">Tasks</div>
             <div className="col-span-2 text-right">Actions</div>
           </div>
 
-          {/* Rows */}
-          {filtered.length === 0 && (
+          {/* Loading */}
+          {isLoading && (
+            <div className="flex items-center justify-center py-16 gap-3 text-slate-500">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">Loading users…</span>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && !isLoading && (
+            <div className="text-center py-16">
+              <p className="text-sm text-rose-400">Failed to load users. Check your connection and try again.</p>
+            </div>
+          )}
+
+          {/* Empty */}
+          {!isLoading && !error && filtered.length === 0 && (
             <div className="text-center py-16">
               <Users className="w-8 h-8 text-slate-700 mx-auto mb-3" />
               <p className="text-sm text-slate-500">
@@ -249,8 +386,11 @@ export default function UsersManagement() {
               </p>
             </div>
           )}
-          {filtered.map((u) => {
-            const userProjects = projects.filter(p => p.memberIds.includes(u.id));
+
+          {/* Rows */}
+          {!isLoading && !error && filtered.map((u) => {
+            const projectCount = userProjectCount(u.id);
+            const taskCount = userTaskCount(u.id);
             return (
               <div
                 key={u.id}
@@ -259,32 +399,57 @@ export default function UsersManagement() {
                 {/* User */}
                 <div className="col-span-4 flex items-center gap-3 min-w-0">
                   <Avatar className="h-9 w-9 border-2 border-slate-800 flex-shrink-0">
-                    <AvatarImage src={u.avatarUrl} />
-                    <AvatarFallback className="text-xs bg-amber-500/10 text-amber-400 font-bold">{u.name[0]}</AvatarFallback>
+                    <AvatarFallback className="text-xs bg-amber-500/10 text-amber-400 font-bold">
+                      {(u.name ?? u.email)[0].toUpperCase()}
+                    </AvatarFallback>
                   </Avatar>
-                  <span className="text-sm font-semibold text-slate-200 truncate">{u.name}</span>
+                  <span className="text-sm font-semibold text-slate-200 truncate">{u.name ?? '—'}</span>
                 </div>
 
                 {/* Email */}
-                <div className="col-span-3 min-w-0">
+                <div className="col-span-2 min-w-0">
                   <span className="text-sm text-slate-500 truncate block">{u.email}</span>
                 </div>
 
-                {/* Role */}
-                <div className="col-span-2">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[0.65rem] font-medium font-mono uppercase tracking-wide ${
-                    u.role === 'admin'
-                      ? 'bg-violet-500/10 text-violet-400'
-                      : 'bg-slate-500/10 text-slate-400'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${u.role === 'admin' ? 'bg-violet-400' : 'bg-slate-500'}`} />
-                    {u.role}
-                  </span>
+                {/* Role — clickable dropdown */}
+                <div className="col-span-2 relative">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setRoleDropdownId(roleDropdownId === u.id ? null : u.id);
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[0.65rem] font-medium font-mono uppercase tracking-wide cursor-pointer hover:ring-1 hover:ring-amber-500/40 transition-all ${ROLE_BADGE_CLASSES[u.userType]}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${ROLE_DOT_CLASSES[u.userType]}`} />
+                    {u.userType}
+                    <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+                  </button>
+
+                  {roleDropdownId === u.id && (
+                    <div className="absolute top-full left-0 mt-1.5 z-20 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl shadow-black/50 py-1 min-w-[110px]">
+                      {ALL_ROLES.map(role => (
+                        <button
+                          key={role}
+                          onClick={(e) => handleRoleChange(u.id, role, e)}
+                          disabled={updateRoleMutation.isPending}
+                          className={`w-full px-3 py-1.5 text-left text-xs font-mono flex items-center gap-2 hover:bg-slate-800 transition-colors disabled:opacity-50 ${u.userType === role ? 'text-amber-400' : 'text-slate-400'}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${ROLE_DOT_CLASSES[role]}`} />
+                          {role}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Projects count */}
-                <div className="col-span-1">
-                  <span className="text-sm text-slate-400 font-mono">{userProjects.length}</span>
+                <div className="col-span-1 text-center">
+                  <span className="text-sm text-slate-400 font-mono">{projectCount}</span>
+                </div>
+
+                {/* Tasks count */}
+                <div className="col-span-1 text-center">
+                  <span className="text-sm text-slate-400 font-mono">{taskCount}</span>
                 </div>
 
                 {/* Actions */}
@@ -292,7 +457,10 @@ export default function UsersManagement() {
                   <GhostBtn onClick={() => openEdit(u)}>
                     <Edit className="w-3.5 h-3.5" />
                   </GhostBtn>
-                  <GhostBtn onClick={(e: any) => handleDelete(u.id, e)} className="hover:text-rose-400 hover:bg-rose-500/10">
+                  <GhostBtn
+                    onClick={(e) => { e?.stopPropagation(); setConfirmDeleteId(u.id); }}
+                    className="hover:text-rose-400 hover:bg-rose-500/10"
+                  >
                     <Trash2 className="w-3.5 h-3.5" />
                   </GhostBtn>
                 </div>
@@ -310,21 +478,72 @@ export default function UsersManagement() {
         footer={
           <>
             <OutlineBtn onClick={() => setDialogOpen(false)}>Cancel</OutlineBtn>
-            <PrimaryButton small onClick={handleSave}>{editingUser ? 'Update' : 'Create'}</PrimaryButton>
+            <PrimaryButton small onClick={handleSave} disabled={isSaving}>
+              {isSaving && <Loader2 className="w-3 h-3 animate-spin" />}
+              {editingUser ? 'Update' : 'Create'}
+            </PrimaryButton>
           </>
         }
       >
         <div className="space-y-4">
-          <InputField label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Full name" />
-          <InputField label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} placeholder="user@example.com" />
-          <InputField label="Password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} placeholder="Password" />
+          <InputField
+            label="Name"
+            value={form.name}
+            onChange={(v) => setForm({ ...form, name: v })}
+            placeholder="Full name"
+          />
+          <InputField
+            label="Email"
+            type="email"
+            value={form.email}
+            onChange={(v) => setForm({ ...form, email: v })}
+            placeholder="user@example.com"
+          />
+          {!editingUser && (
+            <InputField
+              label="Password"
+              type="password"
+              value={form.password}
+              onChange={(v) => setForm({ ...form, password: v })}
+              placeholder="Minimum 6 characters"
+            />
+          )}
           <SelectField
             label="Role"
-            value={form.role}
-            onChange={(v) => setForm({ ...form, role: v as UserRole })}
-            options={[{ value: 'admin', label: 'Admin' }, { value: 'user', label: 'User' }]}
+            value={form.userType}
+            onChange={(v) => setForm({ ...form, userType: v as UserType })}
+            options={[
+              { value: 'ADMIN', label: 'Admin' },
+              { value: 'MEMBER', label: 'Member' },
+              { value: 'CLIENT', label: 'Client' },
+            ]}
           />
         </div>
+      </Modal>
+
+      {/* ═══ DELETE CONFIRMATION MODAL ═══ */}
+      <Modal
+        open={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        title="Delete User"
+        footer={
+          <>
+            <OutlineBtn onClick={() => setConfirmDeleteId(null)}>Cancel</OutlineBtn>
+            <DangerButton
+              small
+              disabled={isDeleting}
+              onClick={() => confirmDeleteId && deleteMutation.mutate(confirmDeleteId)}
+            >
+              {isDeleting && <Loader2 className="w-3 h-3 animate-spin" />}
+              Delete
+            </DangerButton>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-400 leading-relaxed">
+          Are you sure you want to delete this user? This action is permanent and cannot be undone.
+          All project memberships for this user will also be removed.
+        </p>
       </Modal>
     </div>
   );
