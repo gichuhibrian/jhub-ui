@@ -181,19 +181,47 @@ export default function UsersManagement() {
   // ── Queries ──
   const { data: users = [], isLoading: usersLoading, error: usersError } = useQuery({
     queryKey: ['users'],
-    queryFn: userService.getAll,
+    queryFn: async () => {
+      try {
+        return await userService.getAll();
+      } catch (error) {
+        console.error('Failed to fetch users:', error);
+        throw error;
+      }
+    },
   });
   const { data: allMembers = [] } = useQuery({
     queryKey: ['project-members'],
-    queryFn: projectMemberService.getAll,
+    queryFn: async () => {
+      try {
+        return await projectMemberService.getAll();
+      } catch (error) {
+        console.error('Failed to fetch project members:', error);
+        return [];
+      }
+    },
   });
   const { data: allTasks = [] } = useQuery({
     queryKey: ['tasks'],
-    queryFn: taskService.getAll,
+    queryFn: async () => {
+      try {
+        return await taskService.getAll();
+      } catch (error) {
+        console.error('Failed to fetch tasks:', error);
+        return [];
+      }
+    },
   });
   const { data: invitations = [], isLoading: invitesLoading } = useQuery({
     queryKey: ['invitations'],
-    queryFn: invitationService.getAll,
+    queryFn: async () => {
+      try {
+        return await invitationService.getAll();
+      } catch (error) {
+        console.error('Failed to fetch invitations:', error);
+        return [];
+      }
+    },
   });
 
   // ── Close role dropdown on outside click ──
@@ -209,11 +237,20 @@ export default function UsersManagement() {
   const userTaskCount    = (id: string) => allTasks.filter(t => t.userId === id).length;
   const adminCount   = users.filter(u => u.userType === 'ADMIN').length;
   const memberCount  = users.filter(u => u.userType === 'MEMBER').length;
+  const clientCount  = users.filter(u => u.userType === 'CLIENT').length;
   const pendingCount = invitations.filter(i => i.status === 'PENDING').length;
   const filtered = users.filter(u =>
     (u.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
     u.email.toLowerCase().includes(search.toLowerCase())
   );
+
+  // Debug logging
+  useEffect(() => {
+    console.log('Users data:', { users, usersLoading, usersError });
+    console.log('Members data:', allMembers);
+    console.log('Tasks data:', allTasks);
+    console.log('Invitations data:', invitations);
+  }, [users, usersLoading, usersError, allMembers, allTasks, invitations]);
 
   // ── User mutations ──
   const createUserMutation = useMutation({
@@ -318,7 +355,7 @@ export default function UsersManagement() {
         </div>
 
         {/* ── Stats ── */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-4 gap-4 mb-8">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-amber-500/20 transition-colors">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-amber-500/10 grid place-items-center">
@@ -349,6 +386,17 @@ export default function UsersManagement() {
               <div>
                 <div className="text-2xl font-bold text-slate-100">{usersLoading ? '—' : memberCount}</div>
                 <div className="text-xs text-slate-500 font-mono uppercase tracking-widest">Members</div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-amber-500/20 transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 grid place-items-center">
+                <Users className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-slate-100">{usersLoading ? '—' : clientCount}</div>
+                <div className="text-xs text-slate-500 font-mono uppercase tracking-widest">Clients</div>
               </div>
             </div>
           </div>
