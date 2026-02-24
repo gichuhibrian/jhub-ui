@@ -6,6 +6,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { ArrowLeft, Plus, Trash2, Edit, Image, Users as UsersIcon, ListTodo, BarChart3, X, ChevronDown, ChevronRight, Calendar, Target, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 
 // ─── Status Maps ───
 const taskStatusStyle: Record<TaskStatus, { dot: string; bg: string; text: string }> = {
@@ -379,117 +380,7 @@ export default function AdminProjectDetail() {
         {/* ═══ TASKS TAB ═══ */}
         {activeTab === 'tasks' && (
           <div>
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">Tasks <span className="text-slate-500 font-mono text-sm ml-1">({projectTasks.length})</span></h2>
-              <PrimaryButton small onClick={openTaskCreate}>
-                <Plus className="w-3.5 h-3.5" /> Add Task
-              </PrimaryButton>
-            </div>
-            <div className="space-y-3">
-              {projectTasks.map((task) => {
-                const tp = getTaskProgress(task);
-                const assignee = allUsers.find(u => u.id === task.assignedMemberId);
-                const isExpanded = expandedTask === task.id;
-                const ts = taskStatusStyle[task.status];
-                return (
-                  <DashCard key={task.id} className="p-0 overflow-hidden">
-                    {/* Task header row */}
-                    <div
-                      className="flex items-center gap-4 p-4 cursor-pointer hover:bg-slate-800/30 transition-colors"
-                      onClick={() => setExpandedTask(isExpanded ? null : task.id)}
-                    >
-                      <div className="text-slate-600">
-                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                          <span className="text-sm font-semibold text-slate-200">{task.title}</span>
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65rem] font-medium font-mono uppercase tracking-wide ${ts.bg} ${ts.text}`}>
-                            <span className={`w-1 h-1 rounded-full ${ts.dot}`} />
-                            {TASK_STATUS_LABELS[task.status]}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 truncate">{task.description}</p>
-                      </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        {assignee && (
-                          <Avatar className="h-7 w-7 border-2 border-slate-900">
-                            <AvatarImage src={assignee.avatarUrl} />
-                            <AvatarFallback className="text-[0.55rem] bg-amber-500/10 text-amber-400 font-bold">{assignee.name[0]}</AvatarFallback>
-                          </Avatar>
-                        )}
-                        <div className="hidden sm:flex items-center gap-2 w-24">
-                          <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-700" style={{ width: `${tp}%` }} />
-                          </div>
-                          <span className="text-xs text-slate-500 font-mono w-7 text-right">{tp}%</span>
-                        </div>
-                        <GhostBtn onClick={(e: any) => { e.stopPropagation(); openTaskEdit(task); }}>
-                          <Edit className="w-3.5 h-3.5" />
-                        </GhostBtn>
-                        <GhostBtn onClick={(e: any) => { e.stopPropagation(); deleteTask(task.id); toast.success('Task deleted'); }} className="hover:text-rose-400 hover:bg-rose-500/10">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </GhostBtn>
-                      </div>
-                    </div>
-
-                    {/* Expanded: Objectives */}
-                    {isExpanded && (
-                      <div className="px-4 pb-4 pt-2 border-t border-slate-800 mx-4 mb-2">
-                        <p className="text-xs font-mono text-slate-500 uppercase tracking-widest mb-3">
-                          <Target className="w-3 h-3 inline mr-1" />
-                          Objectives ({task.objectives.filter(o => o.completed).length}/{task.objectives.length})
-                        </p>
-                        <div className="space-y-2">
-                          {task.objectives.map((obj) => (
-                            <div key={obj.id} className="flex items-center gap-3 group">
-                              <button
-                                onClick={() => toggleObjective(task.id, obj.id)}
-                                className={`w-5 h-5 rounded border-2 flex-shrink-0 grid place-items-center transition-all cursor-pointer ${
-                                  obj.completed
-                                    ? "bg-emerald-500 border-emerald-500 text-white"
-                                    : "border-slate-700 bg-transparent hover:border-amber-500/50"
-                                }`}
-                                style={{ fontFamily: "inherit" }}
-                              >
-                                {obj.completed && (
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                                )}
-                              </button>
-                              <span className={`text-sm flex-1 transition-colors ${obj.completed ? "line-through text-slate-600" : "text-slate-300"}`}>{obj.title}</span>
-                              <button
-                                onClick={() => removeObjective(task.id, obj.id)}
-                                className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded grid place-items-center text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer bg-transparent border-none"
-                                style={{ fontFamily: "inherit" }}
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex gap-2 mt-3">
-                          <input
-                            placeholder="New objective…"
-                            value={newObjective}
-                            onChange={(e) => setNewObjective(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && addObjectiveToTask(task.id)}
-                            className="flex-1 px-3 py-2 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 outline-none transition-all"
-                            style={{ fontFamily: "inherit" }}
-                          />
-                          <OutlineBtn small onClick={() => addObjectiveToTask(task.id)}>Add</OutlineBtn>
-                        </div>
-                      </div>
-                    )}
-                  </DashCard>
-                );
-              })}
-              {projectTasks.length === 0 && (
-                <div className="text-center py-16">
-                  <ListTodo className="w-8 h-8 text-slate-700 mx-auto mb-3" />
-                  <p className="text-sm text-slate-500">No tasks yet. Create one to get started.</p>
-                </div>
-              )}
-            </div>
+            <KanbanBoard projectId={projectId} />
           </div>
         )}
 

@@ -1,5 +1,8 @@
 import { apiService } from '@/lib/api';
 
+export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE';
+export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
 export interface CreateTaskPayload {
   projectId: string;
   userId?: string;
@@ -7,10 +10,31 @@ export interface CreateTaskPayload {
   description?: string;
   startDate?: string;
   endDate?: string;
-  status?: 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE';
+  status?: TaskStatus;
+  priority?: TaskPriority;
 }
 
 export interface UpdateTaskPayload extends Partial<CreateTaskPayload> {}
+
+export interface TaskObjective {
+  id: string;
+  deliverable: string;
+  status: string;
+  taskId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskProject {
+  id: string;
+  title: string;
+}
+
+export interface TaskAssignee {
+  id: string;
+  name: string | null;
+  email: string;
+}
 
 export interface TaskResponse {
   id: string;
@@ -20,47 +44,39 @@ export interface TaskResponse {
   description: string | null;
   startDate: string | null;
   endDate: string | null;
-  status: 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE';
+  status: TaskStatus;
+  priority: TaskPriority;
+  project: TaskProject | null;
+  assignedTo: TaskAssignee | null;
+  objectives: TaskObjective[];
+  _count: { comments: number };
+  createdAt: string;
+  updatedAt: string;
 }
 
 class TaskService {
   private readonly basePath = '/tasks';
 
-  /**
-   * Get all tasks
-   */
   async getAll(): Promise<TaskResponse[]> {
     const response = await apiService.get<TaskResponse[]>(this.basePath);
     return response.data;
   }
 
-  /**
-   * Get a single task by ID
-   */
   async getById(id: string): Promise<TaskResponse> {
     const response = await apiService.get<TaskResponse>(`${this.basePath}/${id}`);
     return response.data;
   }
 
-  /**
-   * Create a new task
-   */
   async create(data: CreateTaskPayload): Promise<TaskResponse> {
     const response = await apiService.post<TaskResponse>(this.basePath, data);
     return response.data;
   }
 
-  /**
-   * Update an existing task
-   */
   async update(id: string, data: UpdateTaskPayload): Promise<TaskResponse> {
     const response = await apiService.patch<TaskResponse>(`${this.basePath}/${id}`, data);
     return response.data;
   }
 
-  /**
-   * Delete a task
-   */
   async delete(id: string): Promise<void> {
     await apiService.delete(`${this.basePath}/${id}`);
   }

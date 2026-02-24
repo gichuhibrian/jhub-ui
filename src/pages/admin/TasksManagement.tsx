@@ -2,16 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { taskService, TaskResponse, CreateTaskPayload } from '@/services/taskService';
 import { projectService, ProjectResponse } from '@/services/projectService';
-import { Plus, Edit, Trash2, ListTodo, Calendar, User, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { Plus, ListTodo, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-
-// Status styling
-const taskStatusStyle: Record<string, { dot: string; bg: string; text: string; label: string }> = {
-  'TODO': { dot: 'bg-slate-400', bg: 'bg-slate-500/10', text: 'text-slate-400', label: 'To Do' },
-  'IN_PROGRESS': { dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-400', label: 'In Progress' },
-  'REVIEW': { dot: 'bg-blue-400', bg: 'bg-blue-500/10', text: 'text-blue-400', label: 'Review' },
-  'DONE': { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400', label: 'Done' },
-};
+import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 
 // Components
 function DashCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -314,57 +307,8 @@ export default function TasksManagement() {
           </DashCard>
         </div>
 
-        {/* Tasks List */}
-        <DashCard>
-          <div className="space-y-3">
-            {tasks.map((task) => {
-              const ts = taskStatusStyle[task.status];
-              return (
-                <div
-                  key={task.id}
-                  className="flex items-center gap-4 p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition-all"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="text-sm font-semibold">{task.title}</span>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium font-mono uppercase ${ts.bg} ${ts.text}`}>
-                        <span className={`w-1 h-1 rounded-full ${ts.dot}`} />
-                        {ts.label}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mb-2">{task.description || 'No description'}</p>
-                    <div className="flex items-center gap-4 text-xs text-slate-600">
-                      <span className="flex items-center gap-1">
-                        <ListTodo className="w-3 h-3" />
-                        {getProjectName(task.projectId)}
-                      </span>
-                      {task.endDate && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(task.endDate).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <OutlineBtn onClick={() => openTaskEdit(task)}>
-                      <Edit className="w-3.5 h-3.5" />
-                    </OutlineBtn>
-                    <OutlineBtn onClick={() => handleTaskDelete(task.id)} danger>
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </OutlineBtn>
-                  </div>
-                </div>
-              );
-            })}
-            {tasks.length === 0 && (
-              <div className="text-center py-16">
-                <ListTodo className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-                <p className="text-slate-500">No tasks yet. Create one to get started.</p>
-              </div>
-            )}
-          </div>
-        </DashCard>
+        {/* Kanban Board */}
+        <KanbanBoard />
       </div>
 
       {/* Task Dialog */}
