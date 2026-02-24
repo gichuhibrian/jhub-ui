@@ -1,38 +1,39 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/useStore';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   LayoutDashboard, FolderKanban, Users, LogOut, ChevronRight, Menu, X, Layers, ExternalLink, ListTodo, ScrollText,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-
-const adminLinks = [
-  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/admin/projects', label: 'Projects', icon: FolderKanban },
-  { to: '/admin/tasks', label: 'Tasks', icon: ListTodo },
-  { to: '/admin/users', label: 'Users', icon: Users },
-  { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText },
-];
-
-const userLinks = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-];
+import { USER_TYPE_LABELS } from '@/types';
 
 export default function BackofficeLayout() {
-
   const { currentUser, logout } = useAuthStore();
+  const permissions = usePermissions();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-
-    console.log(currentUser);
-
-
   if (!currentUser) return null;
 
-  const links = currentUser.role === 'admin' ? adminLinks : userLinks;
+  // Build navigation links based on permissions
+  const links = [];
+  
+  if (permissions.isAdmin) {
+    links.push(
+      { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/admin/projects', label: 'Projects', icon: FolderKanban },
+      { to: '/admin/tasks', label: 'Tasks', icon: ListTodo },
+      { to: '/admin/users', label: 'Users', icon: Users },
+      { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText }
+    );
+  } else {
+    links.push(
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }
+    );
+  }
 
   const isActive = (path: string) => {
     if (path === '/admin' || path === '/dashboard') return location.pathname === path;
@@ -101,7 +102,9 @@ export default function BackofficeLayout() {
           {sidebarOpen && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-200 truncate">{currentUser.name}</p>
-              <p className="text-[0.65rem] text-slate-600 font-mono uppercase tracking-wider">{currentUser.role}</p>
+              <p className="text-[0.65rem] text-slate-600 font-mono uppercase tracking-wider">
+                {USER_TYPE_LABELS[currentUser.userType]}
+              </p>
             </div>
           )}
           <button

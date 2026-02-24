@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { usePermissions } from '@/hooks/usePermissions';
 import { taskService, TaskResponse, CreateTaskPayload } from '@/services/taskService';
 import { projectService, ProjectResponse } from '@/services/projectService';
 import { Plus, ListTodo, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
@@ -119,6 +120,7 @@ function Modal({ open, onClose, title, children, footer }: {
 
 export default function TasksManagement() {
   const navigate = useNavigate();
+  const permissions = usePermissions();
   const [tasks, setTasks] = useState<TaskResponse[]>([]);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -254,9 +256,11 @@ export default function TasksManagement() {
             <h1 className="text-3xl font-bold tracking-tight mb-2">Task Management</h1>
             <p className="text-slate-500">Manage all project tasks</p>
           </div>
-          <PrimaryButton onClick={openTaskCreate}>
-            <Plus className="w-4 h-4" /> Create Task
-          </PrimaryButton>
+          {permissions.can.editAllTasks && (
+            <PrimaryButton onClick={openTaskCreate}>
+              <Plus className="w-4 h-4" /> Create Task
+            </PrimaryButton>
+          )}
         </div>
 
         {/* Stats */}

@@ -35,7 +35,7 @@ const App = () => (
           <Route path="/invite/accept" element={<AcceptInvitePage />} />
 
           {/* Admin */}
-          <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><BackofficeLayout /></ProtectedRoute>}>
+          <Route path="/admin" element={<ProtectedRoute requiredRole="ADMIN"><BackofficeLayout /></ProtectedRoute>}>
             <Route index element={<AdminDashboard />} />
             <Route path="projects" element={<ProjectsManagement />} />
             <Route path="projects/:projectId" element={<AdminProjectDetail />} />
@@ -44,8 +44,8 @@ const App = () => (
             <Route path="audit-logs" element={<AuditLogPage />} />
           </Route>
 
-          {/* User */}
-          <Route path="/dashboard" element={<ProtectedRoute requiredRole="user"><BackofficeLayout /></ProtectedRoute>}>
+          {/* User (Member and Client) */}
+          <Route path="/dashboard" element={<ProtectedRoute requiredRole={["MEMBER", "CLIENT"]}><BackofficeLayout /></ProtectedRoute>}>
             <Route index element={<UserDashboard />} />
             <Route path="project/:projectId" element={<UserProjectDetail />} />
           </Route>

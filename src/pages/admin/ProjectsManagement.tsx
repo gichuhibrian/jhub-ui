@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataStore, getProjectProgress } from '@/store/useStore';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Project, ProjectStatus, PROJECT_STATUS_LABELS } from '@/types';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
@@ -160,6 +161,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export default function ProjectsManagement() {
   const navigate = useNavigate();
   const { tasks, users } = useDataStore();
+  const permissions = usePermissions();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -322,9 +324,11 @@ export default function ProjectsManagement() {
             <h1 className="text-3xl lg:text-4xl font-bold tracking-tight mb-2">Projects</h1>
             <p className="text-slate-500 text-sm">{projects.length} total project{projects.length !== 1 ? 's' : ''}</p>
           </div>
-          <PrimaryButton onClick={openCreate}>
-            <Plus className="w-4 h-4" /> New Project
-          </PrimaryButton>
+          {permissions.can.createProjects && (
+            <PrimaryButton onClick={openCreate}>
+              <Plus className="w-4 h-4" /> New Project
+            </PrimaryButton>
+          )}
         </div>
 
         {/* ── Toolbar ── */}
@@ -474,9 +478,11 @@ export default function ProjectsManagement() {
                     <GhostBtn onClick={(e: any) => { e.stopPropagation(); openEdit(p); }}>
                       <Edit className="w-3.5 h-3.5" />
                     </GhostBtn>
-                    <GhostBtn onClick={(e: any) => handleDelete(p.id, e)} className="hover:text-rose-400 hover:bg-rose-500/10">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </GhostBtn>
+                    {permissions.can.deleteProjects && (
+                      <GhostBtn onClick={(e: any) => handleDelete(p.id, e)} className="hover:text-rose-400 hover:bg-rose-500/10">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </GhostBtn>
+                    )}
                   </div>
                 </div>
               );
