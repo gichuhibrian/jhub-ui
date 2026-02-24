@@ -3,7 +3,8 @@ import { FolderKanban, Users, CheckCircle, Activity, ArrowRight, Clock, Trending
 import { Link } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { PROJECT_STATUS_LABELS, ProjectStatus } from '@/types';
-import { reportsService, DashboardStats, RecentProject, RecentActivity, ProjectStatusBreakdown } from '@/services/reports.service';
+import { reportsService, DashboardStats, RecentProject, RecentActivity, ProjectStatusBreakdown, MemberWorkload, TaskCompletionOverTime } from '@/services/reports.service';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // ─── Hooks ───
 function useInView() {
@@ -184,6 +185,8 @@ export default function AdminDashboard() {
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [statusBreakdown, setStatusBreakdown] = useState<ProjectStatusBreakdown[]>([]);
+  const [memberWorkload, setMemberWorkload] = useState<MemberWorkload[]>([]);
+  const [taskCompletionData, setTaskCompletionData] = useState<TaskCompletionOverTime[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -191,17 +194,21 @@ export default function AdminDashboard() {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const [statsData, projectsData, activitiesData, breakdownData] = await Promise.all([
+        const [statsData, projectsData, activitiesData, breakdownData, workloadData, completionData] = await Promise.all([
           reportsService.getDashboardStats(),
           reportsService.getRecentProjects(5),
           reportsService.getRecentActivities(6),
           reportsService.getProjectStatusBreakdown(),
+          reportsService.getMemberWorkload(),
+          reportsService.getTaskCompletionOverTime(30),
         ]);
         
         setStats(statsData);
         setRecentProjects(projectsData);
         setRecentActivities(activitiesData);
         setStatusBreakdown(breakdownData);
+        setMemberWorkload(workloadData);
+        setTaskCompletionData(completionData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
         console.error('Dashboard error:', err);
@@ -315,6 +322,91 @@ export default function AdminDashboard() {
           {dashboardStats.map((s, i) => (
             <StatCard key={i} stat={s} index={i} />
           ))}
+        </div>
+
+        {/* ── Charts Row ── */}
+        <div className="grid lg:grid-cols-2 gap-6 mb-10">
+          {/* Task Completion Line Chart */}
+          <Reveal delay={0.05}>
+            <DashCard>
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 rounded-lg bg-sky-500/10 grid place-items-center">
+                  <TrendingUp className="h-4 w-4 text-sky-400" />
+                </div>
+                <h2 className="text-sm font-semibold">Task Completion Trend</h2>
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={taskCompletionData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis 
+                    dataKey="date" 
+                    stroke="#64748b" 
+                    fontSize={10}
+                    tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  />
+                  <YAxis stroke="#64748b" fontSize={10} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#0f172a', 
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      fontSize: '12px'
+                    }}
+                    labelFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="count" 
+                    stroke="#f59e0b" 
+                    strokeWidth={2}
+                    dot={{ fill: '#f59e0b', r: 3 }}
+                    name="Tasks Completed"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </DashCard>
+          </Reveal>
+
+          {/* Member Workload Bar Chart */}
+          <Reveal delay={0.1}>
+            <DashCard>
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 rounded-lg bg-violet-500/10 grid place-items-center">
+                  <Users className="h-4 w-4 text-violet-400" />
+                </div>
+                <h2 className="text-sm font-semibold">Member Workload</h2>
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={memberWorkload.slice(0, 8)}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis 
+                    dataKey="userName" 
+                    stroke="#64748b" 
+                    fontSize={10}
+                    angle={-45}
+                    textAnchor="end"
+                    height={60}
+                  />
+                  <YAxis stroke="#64748b" fontSize={10} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#0f172a', 
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      fontSize: '12px'
+                    }}
+                    formatter={(value: number, name: string) => {
+                      if (name === 'taskCount') return [value, 'Active Tasks'];
+                      if (name === 'urgentCount') return [value, 'Urgent'];
+                      if (name === 'highCount') return [value, 'High Priority'];
+                      return [value, name];
+                    }}
+                  />
+                  <Bar dataKey="taskCount" fill="#f59e0b" name="Active Tasks" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </DashCard>
+          </Reveal>
         </div>
 
         {/* ── Main Grid ── */}

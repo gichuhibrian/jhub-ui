@@ -51,6 +51,19 @@ export interface RecentActivity {
   type: string;
 }
 
+export interface MemberWorkload {
+  userId: string;
+  userName: string;
+  taskCount: number;
+  urgentCount: number;
+  highCount: number;
+}
+
+export interface TaskCompletionOverTime {
+  date: string;
+  count: number;
+}
+
 export const reportsService = {
   getDashboardStats: async (): Promise<DashboardStats> => {
     const response = await apiService.get('/reports/dashboard');
@@ -74,6 +87,16 @@ export const reportsService = {
 
   getRecentActivities: async (limit: number = 6): Promise<RecentActivity[]> => {
     const response = await apiService.get(`/reports/activities/recent?limit=${limit}`);
+    return response.data;
+  },
+
+  getMemberWorkload: async (): Promise<MemberWorkload[]> => {
+    const response = await apiService.get('/reports/member-workload');
+    return response.data;
+  },
+
+  getTaskCompletionOverTime: async (days: number = 30): Promise<TaskCompletionOverTime[]> => {
+    const response = await apiService.get(`/reports/tasks/completion-over-time?days=${days}`);
     return response.data;
   },
 };
