@@ -1,21 +1,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDataStore, getProjectProgress } from '@/store/useStore';
-import { Project, ProjectStatus, PROJECT_STATUS_LABELS } from '@/types';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { usePermissions } from '@/hooks/usePermissions';
+import { ProjectStatus, PROJECT_STATUS_LABELS } from '@/types';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Search, LayoutGrid, List, Trash2, Edit, Eye, EyeOff, GripVertical, ArrowRight, FolderKanban, X } from 'lucide-react';
+import { Plus, Search, LayoutGrid, List, Trash2, Edit, Eye, EyeOff, GripVertical, FolderKanban, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { projectService, ProjectResponse } from '@/services/projectService';
+import { projectMemberService } from '@/services/projectMemberService';
+import { taskService } from '@/services/taskService';
 
 // ─── Status Maps ───
 const statusStyle: Record<ProjectStatus, { dot: string; bg: string; text: string; border: string }> = {
-  'not-started': { dot: 'bg-slate-500', bg: 'bg-slate-500/10', text: 'text-slate-400', border: 'border-slate-700' },
-  'in-progress': { dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },
-  'completed': { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30' },
-  'on-hold': { dot: 'bg-rose-400', bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30' },
+  'PLANNING': { dot: 'bg-slate-500', bg: 'bg-slate-500/10', text: 'text-slate-400', border: 'border-slate-700' },
+  'IN_PROGRESS': { dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },
+  'COMPLETED': { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30' },
+  'ON_HOLD': { dot: 'bg-rose-400', bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30' },
 };
 
-const kanbanColumns: ProjectStatus[] = ['not-started', 'in-progress', 'completed', 'on-hold'];
+const kanbanColumns: ProjectStatus[] = ['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ON_HOLD'];
 
 // ─── Sub-components ───
 function InputField({ label, type = "text", value, onChange, placeholder = "" }: {
@@ -153,61 +157,142 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ─── Main ───
 export default function ProjectsManagement() {
   const navigate = useNavigate();
-  const { projects, tasks, users, addProject, updateProject, deleteProject } = useDataStore();
+  const queryClient = useQueryClient();
+  const permissions = usePermissions();
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'table' | 'kanban'>('table');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editProject, setEditProject] = useState<Project | null>(null);
+  const [editProject, setEditProject] = useState<ProjectResponse | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<ProjectStatus | null>(null);
 
-  const [form, setForm] = useState({ name: '', description: '', status: 'not-started' as ProjectStatus, startDate: '', dueDate: '', isPublic: false });
+  const [form, setForm] = useState({ name: '', description: '', status: 'PLANNING' as ProjectStatus, startDate: '', dueDate: '', isPublic: false });
 
-  const filtered = projects.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+  // Fetch projects
+  const { data: projects = [], isLoading: loading } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectService.getAll(),
+  });
+
+  // Fetch all project members
+  const { data: allMembers = [] } = useQuery({
+    queryKey: ['project-members'],
+    queryFn: () => projectMemberService.getAll(),
+  });
+
+  // Fetch all tasks
+  const { data: allTasks = [] } = useQuery({
+    queryKey: ['tasks'],
+    queryFn: () => taskService.getAll(),
+  });
+
+  const filtered = projects.filter((p) => p.title.toLowerCase().includes(search.toLowerCase()));
 
   const openCreate = () => {
     setEditProject(null);
-    setForm({ name: '', description: '', status: 'not-started', startDate: '', dueDate: '', isPublic: false });
+    setForm({ name: '', description: '', status: 'PLANNING', startDate: '', dueDate: '', isPublic: false });
     setDialogOpen(true);
   };
 
-  const openEdit = (p: Project) => {
+  const openEdit = (p: ProjectResponse) => {
     setEditProject(p);
-    setForm({ name: p.name, description: p.description, status: p.status, startDate: p.startDate, dueDate: p.dueDate, isPublic: p.isPublic });
+    setForm({ 
+      name: p.title, 
+      description: p.description || '', 
+      status: p.status, 
+      startDate: p.startDate.split('T')[0], 
+      dueDate: p.endDate ? p.endDate.split('T')[0] : '', 
+      isPublic: p.isPublic 
+    });
     setDialogOpen(true);
   };
+
+  // Create project mutation
+  const createMutation = useMutation({
+    mutationFn: (payload: any) => projectService.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project created successfully');
+      setDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to create project');
+    },
+  });
+
+  // Update project mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) => projectService.update(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project updated successfully');
+      setDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to update project');
+    },
+  });
+
+  // Delete project mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => projectService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project deleted successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to delete project');
+    },
+  });
 
   const handleSave = () => {
-    if (!form.name) return;
-    if (editProject) {
-      updateProject(editProject.id, form);
-      toast.success('Project updated');
-    } else {
-      const newProject: Project = {
-        id: 'p' + Date.now(),
-        ...form,
-        images: [],
-        featuredImage: '',
-        teamLeadId: '',
-        memberIds: [],
-      };
-      addProject(newProject);
-      toast.success('Project created');
+    if (!form.name || !form.startDate) {
+      toast.error('Please fill in required fields');
+      return;
     }
-    setDialogOpen(false);
+
+    const payload = {
+      title: form.name,
+      description: form.description || undefined,
+      status: form.status,
+      startDate: form.startDate,
+      endDate: form.dueDate || undefined,
+      isPublic: form.isPublic,
+    };
+
+    if (editProject) {
+      updateMutation.mutate({ id: editProject.id, payload });
+    } else {
+      createMutation.mutate(payload);
+    }
   };
 
   const handleDelete = (id: string, e?: any) => {
     e?.stopPropagation();
-    deleteProject(id);
-    toast.success('Project deleted');
+    
+    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+      return;
+    }
+
+    deleteMutation.mutate(id);
+  };
+
+  const handleToggleVisibility = (project: ProjectResponse, e: any) => {
+    e.stopPropagation();
+    
+    updateMutation.mutate({
+      id: project.id,
+      payload: { isPublic: !project.isPublic },
+    });
   };
 
   const handleDrop = (projectId: string, newStatus: ProjectStatus) => {
-    updateProject(projectId, { status: newStatus });
+    updateMutation.mutate({
+      id: projectId,
+      payload: { status: newStatus },
+    });
     setDraggedId(null);
     setDragOverCol(null);
-    toast.success('Status updated');
   };
 
   return (
@@ -241,9 +326,11 @@ export default function ProjectsManagement() {
             <h1 className="text-3xl lg:text-4xl font-bold tracking-tight mb-2">Projects</h1>
             <p className="text-slate-500 text-sm">{projects.length} total project{projects.length !== 1 ? 's' : ''}</p>
           </div>
-          <PrimaryButton onClick={openCreate}>
-            <Plus className="w-4 h-4" /> New Project
-          </PrimaryButton>
+          {permissions.can.createProjects && (
+            <PrimaryButton onClick={openCreate}>
+              <Plus className="w-4 h-4" /> New Project
+            </PrimaryButton>
+          )}
         </div>
 
         {/* ── Toolbar ── */}
@@ -297,8 +384,16 @@ export default function ProjectsManagement() {
               <div className="col-span-1 text-right">Actions</div>
             </div>
 
-            {/* Table rows */}
-            {filtered.length === 0 && (
+            {/* Loading state */}
+            {loading && (
+              <div className="text-center py-16">
+                <Loader2 className="w-8 h-8 text-amber-400 mx-auto mb-3 animate-spin" />
+                <p className="text-sm text-slate-500">Loading projects...</p>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!loading && filtered.length === 0 && (
               <div className="text-center py-16">
                 <FolderKanban className="w-8 h-8 text-slate-700 mx-auto mb-3" />
                 <p className="text-sm text-slate-500">
@@ -306,10 +401,14 @@ export default function ProjectsManagement() {
                 </p>
               </div>
             )}
-            {filtered.map((p) => {
-              const pTasks = tasks.filter((t) => t.projectId === p.id);
-              const progress = getProjectProgress(pTasks);
-              const lead = users.find((u) => u.id === p.teamLeadId);
+
+            {/* Table rows */}
+            {!loading && filtered.map((p) => {
+              const pTasks = allTasks.filter((t) => t.projectId === p.id);
+              const completedTasks = pTasks.filter(t => t.status === 'DONE').length;
+              const progress = pTasks.length > 0 ? Math.round((completedTasks / pTasks.length) * 100) : 0;
+              const members = allMembers.filter(m => m.projectId === p.id);
+              const lead = members.find(m => m.isTeamLead);
               const ss = statusStyle[p.status];
 
               return (
@@ -320,7 +419,7 @@ export default function ProjectsManagement() {
                 >
                   {/* Name */}
                   <div className="col-span-3 min-w-0">
-                    <p className="text-sm font-semibold text-slate-200 truncate group-hover:text-amber-400 transition-colors">{p.name}</p>
+                    <p className="text-sm font-semibold text-slate-200 truncate group-hover:text-amber-400 transition-colors">{p.title}</p>
                     <p className="text-xs text-slate-600 truncate">{p.description}</p>
                   </div>
 
@@ -347,8 +446,7 @@ export default function ProjectsManagement() {
                   <div className="col-span-1">
                     {lead ? (
                       <Avatar className="h-7 w-7 border-2 border-slate-800">
-                        <AvatarImage src={lead.avatarUrl} />
-                        <AvatarFallback className="text-[0.55rem] bg-amber-500/10 text-amber-400 font-bold">{lead.name[0]}</AvatarFallback>
+                        <AvatarFallback className="text-[0.55rem] bg-amber-500/10 text-amber-400 font-bold">{lead.user.name?.[0] || 'U'}</AvatarFallback>
                       </Avatar>
                     ) : (
                       <span className="text-xs text-slate-600">—</span>
@@ -357,22 +455,18 @@ export default function ProjectsManagement() {
 
                   {/* Start */}
                   <div className="col-span-1">
-                    <span className="text-xs text-slate-500 font-mono">{p.startDate || '—'}</span>
+                    <span className="text-xs text-slate-500 font-mono">{p.startDate.split('T')[0]}</span>
                   </div>
 
                   {/* Due */}
                   <div className="col-span-1">
-                    <span className="text-xs text-slate-500 font-mono">{p.dueDate || '—'}</span>
+                    <span className="text-xs text-slate-500 font-mono">{p.endDate ? p.endDate.split('T')[0] : '—'}</span>
                   </div>
 
                   {/* Visibility */}
                   <div className="col-span-1 text-center">
                     <GhostBtn
-                      onClick={(e: any) => {
-                        e.stopPropagation();
-                        updateProject(p.id, { isPublic: !p.isPublic });
-                        toast.success(p.isPublic ? 'Made private' : 'Made public');
-                      }}
+                      onClick={(e: any) => handleToggleVisibility(p, e)}
                       title={p.isPublic ? 'Public — click to make private' : 'Private — click to make public'}
                     >
                       {p.isPublic
@@ -387,9 +481,11 @@ export default function ProjectsManagement() {
                     <GhostBtn onClick={(e: any) => { e.stopPropagation(); openEdit(p); }}>
                       <Edit className="w-3.5 h-3.5" />
                     </GhostBtn>
-                    <GhostBtn onClick={(e: any) => handleDelete(p.id, e)} className="hover:text-rose-400 hover:bg-rose-500/10">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </GhostBtn>
+                    {permissions.can.deleteProjects && (
+                      <GhostBtn onClick={(e: any) => handleDelete(p.id, e)} className="hover:text-rose-400 hover:bg-rose-500/10">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </GhostBtn>
+                    )}
                   </div>
                 </div>
               );
@@ -428,9 +524,10 @@ export default function ProjectsManagement() {
                       : "border-slate-800 bg-slate-900/30"
                   }`}>
                     {colProjects.map((p) => {
-                      const pTasks = tasks.filter(t => t.projectId === p.id);
-                      const progress = getProjectProgress(pTasks);
-                      const members = users.filter(u => p.memberIds?.includes(u.id));
+                      const pTasks = allTasks.filter(t => t.projectId === p.id);
+                      const completedTasks = pTasks.filter(t => t.status === 'DONE').length;
+                      const progress = pTasks.length > 0 ? Math.round((completedTasks / pTasks.length) * 100) : 0;
+                      const members = allMembers.filter(m => m.projectId === p.id);
 
                       return (
                         <div
@@ -444,7 +541,7 @@ export default function ProjectsManagement() {
                           }`}
                         >
                           <div className="flex items-start justify-between mb-2">
-                            <p className="text-sm font-semibold text-slate-200 group-hover:text-amber-400 transition-colors leading-tight flex-1 mr-2">{p.name}</p>
+                            <p className="text-sm font-semibold text-slate-200 group-hover:text-amber-400 transition-colors leading-tight flex-1 mr-2">{p.title}</p>
                             <GripVertical className="w-3.5 h-3.5 text-slate-700 flex-shrink-0 mt-0.5" />
                           </div>
                           {p.description && (
@@ -454,8 +551,7 @@ export default function ProjectsManagement() {
                             <div className="flex -space-x-1.5">
                               {members.slice(0, 3).map(m => (
                                 <Avatar key={m.id} className="h-6 w-6 border-2 border-slate-900">
-                                  <AvatarImage src={m.avatarUrl} />
-                                  <AvatarFallback className="text-[0.5rem] bg-amber-500/10 text-amber-400 font-bold">{m.name?.[0]}</AvatarFallback>
+                                  <AvatarFallback className="text-[0.5rem] bg-amber-500/10 text-amber-400 font-bold">{m.user.name?.[0] || 'U'}</AvatarFallback>
                                 </Avatar>
                               ))}
                             </div>
@@ -493,14 +589,35 @@ export default function ProjectsManagement() {
         title={editProject ? 'Edit Project' : 'New Project'}
         footer={
           <>
-            <OutlineBtn onClick={() => setDialogOpen(false)}>Cancel</OutlineBtn>
-            <PrimaryButton small onClick={handleSave}>{editProject ? 'Update' : 'Create'}</PrimaryButton>
+            <OutlineBtn onClick={() => setDialogOpen(false)} className={(createMutation.isPending || updateMutation.isPending) ? 'opacity-50 pointer-events-none' : ''}>
+              Cancel
+            </OutlineBtn>
+            <PrimaryButton small onClick={handleSave} className={(createMutation.isPending || updateMutation.isPending) ? 'opacity-75' : ''}>
+              {(createMutation.isPending || updateMutation.isPending) ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  {editProject ? 'Updating...' : 'Creating...'}
+                </>
+              ) : (
+                editProject ? 'Update' : 'Create'
+              )}
+            </PrimaryButton>
           </>
         }
       >
         <div className="space-y-4">
-          <InputField label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Project name" />
-          <TextareaField label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} placeholder="Describe the project..." />
+          <InputField 
+            label="Name *" 
+            value={form.name} 
+            onChange={(v) => setForm({ ...form, name: v })} 
+            placeholder="Project name" 
+          />
+          <TextareaField 
+            label="Description" 
+            value={form.description} 
+            onChange={(v) => setForm({ ...form, description: v })} 
+            placeholder="Describe the project..." 
+          />
           <div className="grid grid-cols-2 gap-4">
             <SelectField
               label="Status"
@@ -517,9 +634,20 @@ export default function ProjectsManagement() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <InputField label="Start Date" type="date" value={form.startDate} onChange={(v) => setForm({ ...form, startDate: v })} />
-            <InputField label="Due Date" type="date" value={form.dueDate} onChange={(v) => setForm({ ...form, dueDate: v })} />
+            <InputField 
+              label="Start Date *" 
+              type="date" 
+              value={form.startDate} 
+              onChange={(v) => setForm({ ...form, startDate: v })} 
+            />
+            <InputField 
+              label="Due Date" 
+              type="date" 
+              value={form.dueDate} 
+              onChange={(v) => setForm({ ...form, dueDate: v })} 
+            />
           </div>
+          <p className="text-xs text-slate-600 mt-2">* Required fields</p>
         </div>
       </Modal>
     </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/useStore';
-import { api } from '@/lib/api';
+import { apiService } from '@/lib/api';
 import { AlertCircle } from 'lucide-react';
 
 export default function Login() {
@@ -18,22 +18,27 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const response = await api.post<{ access_token: string; user: any }>('/auth/login', {
+      const response = await apiService.post('/auth/login', {
         email,
         password,
       });
 
-      // Store the access token
-      localStorage.setItem('access_token', response.access_token);
+      const { access_token, user } = response.data;
 
-      // Update auth store with user data from backend (assume admin role)
-      const userWithRole = { ...response.user, role: 'admin' };
-      useAuthStore.setState({ currentUser: userWithRole });
+      // Store the token
+      apiService.setAccessToken(access_token);
 
-      // Redirect to admin dashboard
-      navigate('/admin', { replace: true });
+      // Update auth store
+      useAuthStore.setState({ currentUser: user });
+
+      // Redirect based on role
+      navigate(user.role === 'admin' ? '/admin' : '/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid email or password');
+      console.error('Login error:', err);
+      setError(
+        err.response?.data?.message || 
+        'Invalid email or password. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -148,19 +153,6 @@ export default function Login() {
                 )}
               </button>
             </form>
-
-            {/* Demo Credentials */}
-            <div className="mt-8 p-4 rounded-lg bg-slate-950 border border-slate-800">
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-widest mb-3">Demo Credentials</p>
-              <div className="space-y-2 text-xs text-slate-400">
-                <p>
-                  <span className="text-amber-400 font-medium">Admin:</span> sarah@company.com / admin123
-                </p>
-                <p>
-                  <span className="text-amber-400 font-medium">User:</span> emily@company.com / user123
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Footer */}

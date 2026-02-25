@@ -1,18 +1,27 @@
 import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/useStore';
-import { UserRole } from '@/types';
+import { UserType } from '@/types';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: UserRole;
+  requiredRole?: UserType | UserType[];
 }
 
 export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
   const currentUser = useAuthStore((s) => s.currentUser);
 
   if (!currentUser) return <Navigate to="/login" replace />;
-  if (requiredRole && currentUser.role !== requiredRole) {
-    return <Navigate to={currentUser.role === 'admin' ? '/admin' : '/dashboard'} replace />;
+
+  // Check if user has required role
+  if (requiredRole) {
+    const allowedRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+    const hasAccess = allowedRoles.includes(currentUser.userType);
+
+    if (!hasAccess) {
+      // Redirect based on user type
+      const redirectPath = currentUser.userType === 'ADMIN' ? '/admin' : '/dashboard';
+      return <Navigate to={redirectPath} replace />;
+    }
   }
 
   return <>{children}</>;

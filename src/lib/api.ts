@@ -1,22 +1,28 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 class ApiService {
   private axiosInstance: AxiosInstance;
 
-  constructor(baseUrl: string) {
+  constructor() {
     this.axiosInstance = axios.create({
-      baseURL: baseUrl,
+      baseURL: BASE_URL,
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
+      withCredentials: true,
     });
 
+    this.setupInterceptors();
+  }
+
+  private setupInterceptors(): void {
     // Request interceptor to add auth token
     this.axiosInstance.interceptors.request.use(
       (config) => {
-        const token = localStorage.getItem('access_token');
+        const token = this.getAccessToken();
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
@@ -32,38 +38,67 @@ class ApiService {
       (response) => response,
       (error) => {
         if (error.response?.status === 401) {
-          // Handle unauthorized access (e.g., redirect to login)
-          localStorage.removeItem('access_token');
+          this.handleUnauthorized();
         }
         return Promise.reject(error);
       }
     );
   }
 
-  async get<T>(endpoint: string, config?: AxiosRequestConfig): Promise<T> {
-    const response: AxiosResponse<T> = await this.axiosInstance.get(endpoint, config);
-    return response.data;
+  private getAccessToken(): string | null {
+    return localStorage.getItem('access_token');
   }
 
-  async post<T>(endpoint: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    const response: AxiosResponse<T> = await this.axiosInstance.post(endpoint, data, config);
-    return response.data;
+  private handleUnauthorized(): void {
+    localStorage.removeItem('access_token');
+    window.location.href = '/login';
   }
 
-  async put<T>(endpoint: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    const response: AxiosResponse<T> = await this.axiosInstance.put(endpoint, data, config);
-    return response.data;
+  public async get<T = any>(
+    url: string,
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    return this.axiosInstance.get<T>(url, config);
   }
 
-  async patch<T>(endpoint: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    const response: AxiosResponse<T> = await this.axiosInstance.patch(endpoint, data, config);
-    return response.data;
+  public async post<T = any>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    return this.axiosInstance.post<T>(url, data, config);
   }
 
-  async delete<T>(endpoint: string, config?: AxiosRequestConfig): Promise<T> {
-    const response: AxiosResponse<T> = await this.axiosInstance.delete(endpoint, config);
-    return response.data;
+  public async put<T = any>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    return this.axiosInstance.put<T>(url, data, config);
+  }
+
+  public async patch<T = any>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    return this.axiosInstance.patch<T>(url, data, config);
+  }
+
+  public async delete<T = any>(
+    url: string,
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    return this.axiosInstance.delete<T>(url, config);
+  }
+
+  public setAccessToken(token: string): void {
+    localStorage.setItem('access_token', token);
+  }
+
+  public removeAccessToken(): void {
+    localStorage.removeItem('access_token');
   }
 }
 
-export const api = new ApiService(API_BASE_URL);
+export const apiService = new ApiService();
