@@ -1,9 +1,12 @@
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { TaskResponse, TaskPriority } from '@/services/taskService';
-import { MessageSquare, Calendar, CheckSquare } from 'lucide-react';
+import { MessageSquare, Calendar, CheckSquare, Bell } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { isAfter, parseISO, startOfDay } from 'date-fns';
+import { useQuery } from '@tanstack/react-query';
+import { notificationService } from '@/services/notifications.service';
 
 // ── Priority badge ────────────────────────────────────────────────────────
 const PRIORITY_STYLE: Record<TaskPriority, { label: string; cls: string }> = {
@@ -34,6 +37,22 @@ export function KanbanCard({ task, showProject, readonly, overlay = false, onCli
     id: task.id,
     disabled: readonly || overlay,
   });
+
+  // Check for unread notifications related to this task
+  const { data: allNotifications, isLoading, error } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => notificationService.getAll({ limit: 100 }),
+    enabled: !overlay, // Don't fetch for overlay
+    staleTime: 10000, // Consider data fresh for 10 seconds
+  });
+
+  // Filter unread notifications for this specific task
+  const hasUnreadNotifications = allNotifications?.some(
+    (n) => {
+      const matches = n.entityType === 'Task' && n.entityId === task.id && !n.isRead;
+      return matches;
+    }
+  ) ?? false;
 
   const style = {
     transform: overlay ? undefined : CSS.Translate.toString(transform),
@@ -68,9 +87,16 @@ export function KanbanCard({ task, showProject, readonly, overlay = false, onCli
     >
       {/* Priority + Project */}
       <div className="flex items-center justify-between gap-2">
-        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[0.6rem] font-bold uppercase tracking-wider ${pr.cls}`}>
-          {pr.label}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[0.6rem] font-bold uppercase tracking-wider ${pr.cls}`}>
+            {pr.label}
+          </span>
+          {hasUnreadNotifications && (
+            <Badge variant="destructive" className="h-4 w-4 p-0 flex items-center justify-center rounded-full">
+              <Bell className="h-2.5 w-2.5" />
+            </Badge>
+          )}
+        </div>
         {showProject && task.project && (
           <span className="text-[0.6rem] text-slate-500 truncate font-mono">{task.project.title}</span>
         )}

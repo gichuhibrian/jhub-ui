@@ -8,12 +8,14 @@ import { projectMemberService } from '@/services/projectMemberService';
 import { projectImageService } from '@/services/projectImageService';
 import { projectDocumentService } from '@/services/projectDocumentService';
 import { objectiveService } from '@/services/objectiveService';
-import { ArrowLeft, Users as UsersIcon, ListTodo, BarChart3, Image as ImageIcon, Plus, Trash2, Calendar, Crown, X, Edit, FileText, Download, Upload } from 'lucide-react';
+import { ArrowLeft, Users as UsersIcon, ListTodo, BarChart3, Image as ImageIcon, Plus, Trash2, Calendar, Crown, X, Edit, FileText, Download, Upload, MessageCircle } from 'lucide-react';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import { PROJECT_STATUS_LABELS, ProjectStatus, TaskStatus, Priority } from '@/types';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { uploadFileToS3, getFileIcon, formatFileSize } from '@/lib/s3Upload';
+import { ConversationsPanel } from '@/components/conversations/ConversationsPanel';
+import { useCurrentUser } from '@/hooks/usePermissions';
 
 // ─── Status Maps ───
 const projectStatusStyle: Record<ProjectStatus, { dot: string; bg: string; text: string }> = {
@@ -64,7 +66,8 @@ export default function AdminProjectDetail() {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'members' | 'gallery' | 'resources'>('overview');
+  const currentUser = useCurrentUser();
+  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'members' | 'gallery' | 'resources' | 'conversations'>('overview');
   const [addMemberModal, setAddMemberModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [addImageModal, setAddImageModal] = useState(false);
@@ -356,6 +359,9 @@ export default function AdminProjectDetail() {
           <TabButton active={activeTab === 'resources'} onClick={() => setActiveTab('resources')}>
             <FileText className="w-3.5 h-3.5" /> Resources
           </TabButton>
+          <TabButton active={activeTab === 'conversations'} onClick={() => setActiveTab('conversations')}>
+            <MessageCircle className="w-3.5 h-3.5" /> Conversations
+          </TabButton>
         </div>
 
         {/* OVERVIEW TAB */}
@@ -629,6 +635,17 @@ export default function AdminProjectDetail() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* CONVERSATIONS TAB */}
+        {activeTab === 'conversations' && currentUser && (
+          <div>
+            <ConversationsPanel
+              projectId={projectId!}
+              currentUserId={currentUser.id}
+              currentUserName={currentUser.name || currentUser.email}
+            />
           </div>
         )}
       </div>

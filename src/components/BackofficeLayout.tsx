@@ -7,6 +7,7 @@ import {
 import { useState } from 'react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { USER_TYPE_LABELS } from '@/types';
+import { NotificationBell } from '@/components/NotificationBell';
 
 export default function BackofficeLayout() {
   const { currentUser, logout } = useAuthStore();
@@ -183,12 +184,15 @@ export default function BackofficeLayout() {
             </nav>
           </div>
 
-          <Link
-            to="/"
-            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-amber-400 transition-colors font-mono uppercase tracking-wider"
-          >
-            Portfolio <ExternalLink className="w-3 h-3" />
-          </Link>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-amber-400 transition-colors font-mono uppercase tracking-wider"
+            >
+              Portfolio <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
         </header>
 
         {/* Content — no extra bg since child pages supply their own */}
