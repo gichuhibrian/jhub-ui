@@ -153,22 +153,6 @@ export default function Login() {
                 )}
               </button>
             </form>
-
-            {/* Demo Credentials */}
-            <div className="mt-8 p-4 rounded-lg bg-slate-950 border border-slate-800">
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-widest mb-3">Admin Credentials</p>
-              <div className="space-y-2 text-xs text-slate-400">
-                <p>
-                  <span className="text-amber-400 font-medium">Your Account:</span> johnmwangi1729@gmail.com / John001?
-                </p>
-                <p>
-                  <span className="text-amber-400 font-medium">Demo Admin:</span> admin@projecthub.com / admin123
-                </p>
-                <p>
-                  <span className="text-sky-400 font-medium">Demo User:</span> emily@company.com / user123
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Footer */}

@@ -8,6 +8,15 @@ export interface ObjectiveResponse {
   /** The backend field is `deliverable`, not `title`. */
   deliverable: string;
   status: ObjectiveStatus;
+  isApproved?: boolean | null;
+  reviewComment?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  reviewer?: {
+    id: string;
+    name: string;
+    email: string;
+  };
 }
 
 export interface CreateObjectivePayload {
@@ -21,13 +30,25 @@ export interface UpdateObjectivePayload {
   status?: ObjectiveStatus;
 }
 
+export interface ReviewObjectivePayload {
+  isApproved: boolean;
+  reviewComment?: string;
+}
+
+export interface ReviewStatusResponse {
+  total: number;
+  approved: number;
+  rejected: number;
+  pending: number;
+  allApproved: boolean;
+  objectives: ObjectiveResponse[];
+}
+
 class ObjectiveService {
   private readonly basePath = '/objectives';
 
   /**
    * Fetches objectives for a given task.
-   * Note: the backend does not currently filter by taskId query param;
-   * this will work correctly once the backend supports `?taskId=x`.
    */
   async getByTask(taskId: string): Promise<ObjectiveResponse[]> {
     const response = await apiService.get<ObjectiveResponse[]>(this.basePath, {
@@ -48,6 +69,30 @@ class ObjectiveService {
 
   async delete(id: string): Promise<void> {
     await apiService.delete(`${this.basePath}/${id}`);
+  }
+
+  /**
+   * Review an objective (approve or reject with comment)
+   */
+  async review(id: string, data: ReviewObjectivePayload): Promise<ObjectiveResponse> {
+    const response = await apiService.post<ObjectiveResponse>(`${this.basePath}/${id}/review`, data);
+    return response.data;
+  }
+
+  /**
+   * Get review status for a task
+   */
+  async getReviewStatus(taskId: string): Promise<ReviewStatusResponse> {
+    const response = await apiService.get<ReviewStatusResponse>(`${this.basePath}/task/${taskId}/review-status`);
+    return response.data;
+  }
+
+  /**
+   * Send task back for revision
+   */
+  async sendBackForRevision(taskId: string, feedback: string): Promise<{ message: string; feedback: string }> {
+    const response = await apiService.post(`${this.basePath}/task/${taskId}/send-back`, { feedback });
+    return response.data;
   }
 
   /**

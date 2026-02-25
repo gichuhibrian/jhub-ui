@@ -20,6 +20,9 @@ import { isAfter, parseISO, startOfDay, endOfWeek, endOfMonth, startOfWeek, star
 import { KanbanColumn, COLUMNS } from './KanbanColumn';
 import { KanbanCard } from './KanbanCard';
 import { TaskDetailPanel } from '../TaskDetailPanel';
+import { TaskReviewModal } from '../TaskReviewModal';
+import { usePermissions } from '@/hooks/usePermissions';
+import { useCanReview } from '@/hooks/useTeamLead';
 
 export interface KanbanBoardProps {
   /** If provided, only show tasks for this project */
@@ -59,10 +62,13 @@ function matchesDueDate(endDate: string | null, filter: DueDateFilter): boolean 
 
 export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoardProps) {
   const queryClient = useQueryClient();
+  const permissions = usePermissions();
+  const canReview = useCanReview(projectId);
 
   // ── Drag state ─────────────────────────────────────────────────────────
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [reviewTaskId, setReviewTaskId] = useState<string | null>(null);
   const [createTaskModal, setCreateTaskModal] = useState(false);
   const [taskForm, setTaskForm] = useState<CreateTaskPayload>({
     projectId: projectId || '',
@@ -148,9 +154,10 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
       );
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (error: any, _vars, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(['tasks'], ctx.prev);
-      toast.error('Failed to move task');
+      const errorMessage = error?.response?.data?.message || 'Failed to move task';
+      toast.error(errorMessage);
     },
     onSuccess: () => {
       toast.success('Task moved');
@@ -175,7 +182,10 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
         priority: 'MEDIUM',
       });
     },
-    onError: () => toast.error('Failed to create task'),
+    onError: (error: any) => {
+      const errorMessage = error?.response?.data?.message || 'Failed to create task';
+      toast.error(errorMessage);
+    },
   });
 
   // ── Drag handlers ──────────────────────────────────────────────────────
@@ -339,6 +349,8 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
               showProject={showProject}
               readonly={readonly}
               onTaskClick={setSelectedTaskId}
+              onReviewClick={setReviewTaskId}
+              canReview={canReview}
             />
           ))}
         </div>
@@ -480,6 +492,18 @@ export function KanbanBoard({ projectId, userId, readonly = false }: KanbanBoard
           </div>
         </div>
       )}
+
+      {/* Task Review Modal */}
+      {reviewTaskId && (() => {
+        const task = allTasks.find(t => t.id === reviewTaskId);
+        return task ? (
+          <TaskReviewModal
+            taskId={reviewTaskId}
+            taskTitle={task.title}
+            onClose={() => setReviewTaskId(null)}
+          />
+        ) : null;
+      })()}
     </div>
   );
 }

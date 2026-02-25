@@ -21,6 +21,11 @@ export interface Permissions {
     manageProjectMembers: boolean;
     changeTaskAssignee: boolean;
     dragTasks: boolean;
+    createTasks: boolean;
+    addProjectImages: boolean;
+    addProjectDocuments: boolean;
+    markObjectivesComplete: boolean;
+    reviewTasks: boolean;
   };
 }
 
@@ -47,14 +52,21 @@ export const usePermissions = (): Permissions => {
         deleteProjects: isAdmin,
         editAllTasks: isAdmin,
         viewAllProjects: isAdmin,
-        manageProjectMembers: isAdmin,
-        changeTaskAssignee: isAdmin,
+        reviewTasks: isAdmin, // Team leads also have this, checked separately
+
+        // Admin + Team Lead permissions (checked at component level with team lead status)
+        manageProjectMembers: isAdmin, // Team leads also have this, checked separately
+        changeTaskAssignee: isAdmin, // Team leads also have this, checked separately
+        createTasks: isAdmin, // Team leads also have this, checked separately
+        addProjectImages: isAdmin, // Team leads also have this, checked separately
+        addProjectDocuments: isAdmin, // Team leads also have this, checked separately
 
         // Admin + Member permissions
         editOwnTasks: isAdmin || isMember,
         addComments: isAdmin || isMember,
         deleteComments: isAdmin || isMember,
         dragTasks: isAdmin || isMember,
+        markObjectivesComplete: isAdmin || isMember, // Members can only mark their own
 
         // Member + Client permissions
         viewAssignedProjects: isMember || isClient,

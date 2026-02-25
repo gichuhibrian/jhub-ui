@@ -30,7 +30,8 @@ export default function BackofficeLayout() {
     );
   } else {
     links.push(
-      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/dashboard/projects', label: 'Projects', icon: FolderKanban }
     );
   }
 

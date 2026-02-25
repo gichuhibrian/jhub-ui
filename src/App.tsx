@@ -14,6 +14,7 @@ import AdminProjectDetail from "./pages/admin/AdminProjectDetail";
 import UsersManagement from "./pages/admin/UsersManagement";
 import AuditLogPage from "./pages/admin/AuditLogPage";
 import UserDashboard from "./pages/user/UserDashboard";
+import UserProjectsList from "./pages/user/UserProjectsList";
 import UserProjectDetail from "./pages/user/UserProjectDetail";
 import AcceptInvitePage from "./pages/AcceptInvitePage";
 import NotFound from "./pages/NotFound";
@@ -45,6 +46,7 @@ const App = () => (
           {/* User (Member and Client) */}
           <Route path="/dashboard" element={<ProtectedRoute requiredRole={["MEMBER", "CLIENT"]}><BackofficeLayout /></ProtectedRoute>}>
             <Route index element={<UserDashboard />} />
+            <Route path="projects" element={<UserProjectsList />} />
             <Route path="project/:projectId" element={<UserProjectDetail />} />
           </Route>
 

@@ -1,6 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { TaskResponse, TaskStatus } from '@/services/taskService';
 import { KanbanCard } from './KanbanCard';
+import { ClipboardCheck } from 'lucide-react';
 
 export interface ColumnConfig {
   status: TaskStatus;
@@ -47,10 +48,13 @@ interface KanbanColumnProps {
   showProject: boolean;
   readonly: boolean;
   onTaskClick?: (taskId: string) => void;
+  onReviewClick?: (taskId: string) => void;
+  canReview?: boolean;
 }
 
-export function KanbanColumn({ config, tasks, showProject, readonly, onTaskClick }: KanbanColumnProps) {
+export function KanbanColumn({ config, tasks, showProject, readonly, onTaskClick, onReviewClick, canReview }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: config.status });
+  const isReviewColumn = config.status === 'REVIEW';
 
   return (
     <div className="flex flex-col min-w-[260px] w-full">
@@ -73,13 +77,27 @@ export function KanbanColumn({ config, tasks, showProject, readonly, onTaskClick
         }`}
       >
         {tasks.map(task => (
-          <KanbanCard
-            key={task.id}
-            task={task}
-            showProject={showProject}
-            readonly={readonly}
-            onClick={() => onTaskClick?.(task.id)}
-          />
+          <div key={task.id} className="relative group">
+            <KanbanCard
+              task={task}
+              showProject={showProject}
+              readonly={readonly}
+              onClick={() => onTaskClick?.(task.id)}
+            />
+            {/* Review button for tasks in review column */}
+            {isReviewColumn && canReview && onReviewClick && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReviewClick(task.id);
+                }}
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 rounded-lg bg-amber-500 text-slate-950 text-xs font-semibold hover:bg-amber-600 flex items-center gap-1 shadow-lg"
+              >
+                <ClipboardCheck className="w-3 h-3" />
+                Review
+              </button>
+            )}
+          </div>
         ))}
 
         {tasks.length === 0 && (

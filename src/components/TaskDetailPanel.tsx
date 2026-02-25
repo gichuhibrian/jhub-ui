@@ -5,11 +5,13 @@ import { objectiveService, ObjectiveResponse } from '@/services/objectiveService
 import { commentService, CommentResponse } from '@/services/commentService';
 import { userService } from '@/services/userService';
 import { useCurrentUser, usePermissions } from '@/hooks/usePermissions';
+import { useCanReview } from '@/hooks/useTeamLead';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { X, Check, Plus, Trash2, Send, Clock, User, Flag, Calendar, MessageSquare, Save } from 'lucide-react';
+import { X, Check, Plus, Trash2, Send, Clock, User, Flag, Calendar, MessageSquare, Save, ClipboardCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { TASK_STATUS_LABELS, PRIORITY_LABELS, TaskStatus, Priority } from '@/types';
+import { TaskReviewModal } from './TaskReviewModal';
 
 interface TaskDetailPanelProps {
   taskId: string;
@@ -47,6 +49,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
   const [hasChanges, setHasChanges] = useState(false);
   const [newObjective, setNewObjective] = useState('');
   const [newComment, setNewComment] = useState('');
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   // Handle close with refresh
   const handleClose = () => {
@@ -60,6 +63,9 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
     queryKey: ['task', taskId],
     queryFn: () => taskService.getById(taskId),
   });
+
+  // Check if user can review this task
+  const canReview = useCanReview(task?.projectId);
 
   const { data: objectives = [] } = useQuery({
     queryKey: ['objectives', taskId],
@@ -108,7 +114,10 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
       setHasChanges(false);
       toast.success('Task updated');
     },
-    onError: () => toast.error('Failed to update task'),
+    onError: (error: any) => {
+      const errorMessage = error?.response?.data?.message || 'Failed to update task';
+      toast.error(errorMessage);
+    },
   });
 
   const handleSave = () => {
@@ -142,7 +151,10 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['objectives', taskId] });
     },
-    onError: () => toast.error('Failed to update objective'),
+    onError: (error: any) => {
+      const errorMessage = error?.response?.data?.message || 'Failed to update objective';
+      toast.error(errorMessage);
+    },
   });
 
   const deleteObjectiveMutation = useMutation({
@@ -196,6 +208,16 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
         <div className="sticky top-0 z-10 flex items-center justify-between p-6 pb-4 bg-slate-900 border-b border-slate-800">
           <h2 className="text-xl font-semibold text-slate-100">Task Details</h2>
           <div className="flex items-center gap-2">
+            {/* Review button for team leads when task is in REVIEW */}
+            {task.status === 'REVIEW' && canReview && (
+              <button
+                onClick={() => setShowReviewModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-semibold hover:shadow-lg transition-all"
+              >
+                <ClipboardCheck className="w-4 h-4" />
+                Review Task
+              </button>
+            )}
             {canEdit && hasChanges && (
               <button
                 onClick={handleSave}
@@ -489,6 +511,21 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
           )}
         </div>
       </div>
+
+      {/* Review Modal */}
+      {showReviewModal && (
+        <TaskReviewModal
+          taskId={taskId}
+          taskTitle={task.title}
+          onClose={() => {
+            setShowReviewModal(false);
+            // Refresh task data after review
+            queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+            queryClient.invalidateQueries({ queryKey: ['tasks'] });
+            queryClient.invalidateQueries({ queryKey: ['objectives', taskId] });
+          }}
+        />
+      )}
     </div>
   );
 }
