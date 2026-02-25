@@ -25,6 +25,14 @@ export interface ProjectResponse {
   isPublic: boolean;
   createdAt: string;
   updatedAt: string;
+  members?: Array<{
+    id: string;
+    user: {
+      id: string;
+      email: string;
+      name: string | null;
+    };
+  }>;
 }
 
 class ProjectService {
@@ -67,6 +75,14 @@ class ProjectService {
    */
   async delete(id: string): Promise<void> {
     await apiService.delete(`${this.basePath}/${id}`);
+  }
+
+  /**
+   * Get all public projects (no authentication required)
+   */
+  async getPublic(): Promise<ProjectResponse[]> {
+    const response = await apiService.get<ProjectResponse[]>(`${this.basePath}/public`);
+    return response.data;
   }
 }
 

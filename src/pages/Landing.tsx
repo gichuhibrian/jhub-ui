@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { projectService, ProjectResponse } from "@/services/projectService";
 
 const PROJECTS = [
   { id: 1, name: "NexaPay Dashboard", desc: "Real-time financial analytics platform processing 2M+ daily transactions with sub-second latency and predictive fraud detection.", tags: ["React", "Node.js", "AWS"], status: "complete", progress: 100, category: "web", img: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80", team: ["A", "K", "M"] },
@@ -57,8 +59,8 @@ const CONTACT_ITEMS = [
 ];
 
 // ─── Hooks ───
-function useInView() {
-  const ref = useRef(null);
+function useInView(): [React.RefObject<HTMLDivElement>, boolean] {
+  const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const el = ref.current;
@@ -159,9 +161,16 @@ function StatCard({ stat, index, isLast }) {
 
 function ProjectCard({ project, index }) {
   const [hovered, setHovered] = useState(false);
+  const navigate = useNavigate();
+  
+  const handleClick = () => {
+    navigate(`/project/${project.id}`);
+  };
+  
   return (
     <Reveal delay={index * 0.08}>
       <div
+        onClick={handleClick}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         className={`bg-slate-900 rounded-2xl overflow-hidden cursor-pointer transition-all duration-500 ${
@@ -242,7 +251,26 @@ function ServiceCard({ service, index }) {
 // ─── Main ───
 export default function ProjectHub() {
   const [scrolled, setScrolled] = useState(false);
-  const [filter, setFilter] = useState("all");
+  const [projects, setProjects] = useState<ProjectResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        setLoading(true);
+        const data = await projectService.getPublic();
+        setProjects(data);
+      } catch (error) {
+        console.error("Failed to fetch public projects:", error);
+        // Silently fail - show empty state instead of redirecting
+        setProjects([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProjects();
+  }, []);
 
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 30);
@@ -254,11 +282,17 @@ export default function ProjectHub() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  const filtered = filter === "all" ? PROJECTS : PROJECTS.filter(p => p.category === filter);
-  const filters = [
-    { k: "all", l: "All" }, { k: "web", l: "Web" },
-    { k: "mobile", l: "Mobile" }, { k: "cloud", l: "Cloud" },
-  ];
+  // Map backend projects to display format
+  const mappedProjects = projects.map(p => ({
+    id: p.id,
+    name: p.title,
+    desc: p.description || "No description available",
+    tags: [], // Backend doesn't have tags, could be added later
+    status: p.status === "COMPLETED" ? "complete" : "progress",
+    progress: p.status === "COMPLETED" ? 100 : p.status === "IN_PROGRESS" ? 65 : 30,
+    img: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80", // Default image
+    team: p.members?.slice(0, 3).map(m => m.user.name?.charAt(0).toUpperCase() || "?") || [],
+  }));
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-950 text-slate-200" style={{ fontFamily: "'Sora', sans-serif" }}>
@@ -427,28 +461,21 @@ export default function ProjectHub() {
                 </p>
               </Reveal>
             </div>
-            <Reveal delay={0.15}>
-              <div className="flex gap-2">
-                {filters.map(f => (
-                  <button
-                    key={f.k}
-                    onClick={() => setFilter(f.k)}
-                    className={`px-4 py-1.5 rounded-full text-sm cursor-pointer transition-all duration-200 border ${
-                      filter === f.k
-                        ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
-                        : "border-slate-800 bg-transparent text-slate-500 hover:border-slate-600 hover:text-slate-300"
-                    }`}
-                    style={{ fontFamily: "inherit" }}
-                  >
-                    {f.l}
-                  </button>
-                ))}
-              </div>
-            </Reveal>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((p, i) => <ProjectCard key={p.id} project={p} index={i} />)}
-          </div>
+          {loading ? (
+            <div className="text-center py-16">
+              <div className="inline-block w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-slate-500 mt-4">Loading projects...</p>
+            </div>
+          ) : mappedProjects.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-slate-500">No public projects available at the moment.</p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {mappedProjects.map((p, i) => <ProjectCard key={p.id} project={p} index={i} />)}
+            </div>
+          )}
         </div>
       </section>
 
@@ -561,7 +588,7 @@ export default function ProjectHub() {
                     style={{ fontFamily: "inherit" }}
                   />
                 </div>
-                <GradientButton className="w-full justify-center">
+                <GradientButton onClick={() => {}} className="w-full justify-center">
                   Send Message
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                 </GradientButton>

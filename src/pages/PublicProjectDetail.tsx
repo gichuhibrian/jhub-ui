@@ -1,148 +1,279 @@
-import { useParams, Link } from 'react-router-dom';
-import { useDataStore, getProjectProgress, getTaskProgress } from '@/store/useStore';
-import { PROJECT_STATUS_LABELS, TASK_STATUS_LABELS } from '@/types';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { projectService, ProjectResponse } from '@/services/projectService';
+import { projectImageService, ProjectImageResponse } from '@/services/projectImageService';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { ArrowLeft, Calendar, Users as UsersIcon } from 'lucide-react';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
-import { useState } from 'react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { ArrowLeft, Calendar, ExternalLink, Github, X } from 'lucide-react';
 import { motion } from 'framer-motion';
+
+const STATUS_LABELS: Record<string, string> = {
+  PLANNING: 'Planning',
+  IN_PROGRESS: 'In Progress',
+  COMPLETED: 'Completed',
+  ON_HOLD: 'On Hold',
+};
 
 export default function PublicProjectDetail() {
   const { projectId } = useParams();
-  const { projects, tasks, users } = useDataStore();
-  const project = projects.find((p) => p.id === projectId);
+  const navigate = useNavigate();
+  const [project, setProject] = useState<ProjectResponse | null>(null);
+  const [images, setImages] = useState<ProjectImageResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
-  if (!project || !project.isPublic) {
+  useEffect(() => {
+    const fetchProject = async () => {
+      if (!projectId) return;
+      
+      try {
+        setLoading(true);
+        const data = await projectService.getById(projectId);
+        
+        // Check if project is public
+        if (!data.isPublic) {
+          setError(true);
+          return;
+        }
+        
+        setProject(data);
+        
+        // Fetch project images
+        try {
+          const projectImages = await projectImageService.getByProject(projectId);
+          setImages(projectImages);
+        } catch (imgError) {
+          console.error('Failed to fetch project images:', imgError);
+          // Continue even if images fail to load
+        }
+      } catch (err) {
+        console.error('Failed to fetch project:', err);
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProject();
+  }, [projectId]);
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Project Not Found</h1>
-          <Link to="/" className="text-primary hover:underline">← Back to portfolio</Link>
+          <div className="inline-block w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-slate-400">Loading project...</p>
         </div>
       </div>
     );
   }
 
-  const projectTasks = tasks.filter((t) => t.projectId === project.id);
-  const progress = getProjectProgress(projectTasks);
-  const members = users.filter((u) => project.memberIds.includes(u.id));
-  const teamLead = users.find((u) => u.id === project.teamLeadId);
+  if (error || !project) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-2 text-slate-100">Project Not Found</h1>
+          <p className="text-slate-400 mb-4">This project is not publicly available.</p>
+          <Link to="/" className="text-amber-400 hover:text-amber-300 inline-flex items-center gap-2">
+            <ArrowLeft className="h-4 w-4" /> Back to portfolio
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const progress = project.status === 'COMPLETED' ? 100 : project.status === 'IN_PROGRESS' ? 65 : 30;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-slate-950 text-slate-200" style={{ fontFamily: "'Sora', sans-serif" }}>
+      <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+      
       {/* Header */}
       <div className="relative h-80 overflow-hidden">
-        <img src={project.featuredImage} alt={project.name} className="w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-foreground/50" />
+        <img 
+          src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&q=80" 
+          alt={project.title} 
+          className="w-full h-full object-cover" 
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent" />
         <div className="absolute inset-0 flex items-end">
-          <div className="container mx-auto px-4 pb-8">
-            <Link to="/" className="inline-flex items-center gap-1.5 text-sm mb-4 hover:underline" style={{ color: 'hsl(210 20% 80%)' }}>
+          <div className="container mx-auto px-6 pb-8 max-w-6xl">
+            <Link 
+              to="/" 
+              className="inline-flex items-center gap-2 text-sm mb-4 text-slate-300 hover:text-amber-400 transition-colors"
+            >
               <ArrowLeft className="h-4 w-4" /> Back to portfolio
             </Link>
-            <h1 className="text-3xl lg:text-4xl font-bold mb-2" style={{ color: 'hsl(0 0% 100%)' }}>{project.name}</h1>
-            <Badge className="bg-primary/20 text-primary border-0">{PROJECT_STATUS_LABELS[project.status]}</Badge>
+            <h1 className="text-3xl lg:text-4xl font-bold mb-3 text-slate-100">{project.title}</h1>
+            <Badge 
+              className={`${
+                project.status === 'COMPLETED' 
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' 
+                  : 'bg-amber-500/15 text-amber-400 border-amber-500/20'
+              } border`}
+            >
+              {STATUS_LABELS[project.status]}
+            </Badge>
           </div>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-12">
+      <div className="container mx-auto px-6 py-12 max-w-6xl">
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Main */}
+          {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <h2 className="text-xl font-semibold mb-3">About This Project</h2>
-              <p className="text-muted-foreground leading-relaxed">{project.description}</p>
+              <h2 className="text-xl font-semibold mb-4 text-slate-100">About This Project</h2>
+              <p className="text-slate-400 leading-relaxed">
+                {project.description || 'No description available.'}
+              </p>
             </motion.div>
 
             {/* Gallery */}
-            {project.images.length > 0 && (
-              <div>
-                <h2 className="text-xl font-semibold mb-3">Gallery</h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {project.images.map((img, i) => (
-                    <Dialog key={i} open={lightboxImage === img} onOpenChange={(open) => setLightboxImage(open ? img : null)}>
-                      <DialogTrigger asChild>
-                        <div className="aspect-video rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition">
-                          <img src={img} alt={`${project.name} ${i + 1}`} className="w-full h-full object-cover" />
-                        </div>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-4xl p-2">
-                        <img src={img} alt="" className="w-full rounded-lg" />
-                      </DialogContent>
-                    </Dialog>
+            {images.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+              >
+                <h2 className="text-xl font-semibold mb-4 text-slate-100">Gallery</h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {images.map((img, i) => (
+                    <motion.div
+                      key={img.id}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="aspect-video rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition-all hover:scale-105 duration-300 bg-slate-900 border border-slate-800"
+                      onClick={() => setLightboxImage(img.imageUrl)}
+                    >
+                      <img 
+                        src={img.imageUrl} 
+                        alt={`${project.title} - Image ${i + 1}`} 
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </motion.div>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             )}
 
-            {/* Tasks */}
-            <div>
-              <h2 className="text-xl font-semibold mb-3">Progress Breakdown</h2>
-              <div className="space-y-3">
-                {projectTasks.map((task) => {
-                  const tp = getTaskProgress(task);
-                  return (
-                    <Card key={task.id} className="shadow-card">
-                      <CardContent className="p-4 flex items-center justify-between">
-                        <div className="flex-1 min-w-0 mr-4">
-                          <p className="font-medium text-sm">{task.title}</p>
-                          <p className="text-xs text-muted-foreground">{TASK_STATUS_LABELS[task.status]} · {tp}% complete</p>
-                        </div>
-                        <Progress value={tp} className="w-24 h-1.5" />
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
+            {/* Lightbox Dialog */}
+            <Dialog open={!!lightboxImage} onOpenChange={(open) => !open && setLightboxImage(null)}>
+              <DialogContent className="max-w-5xl p-0 bg-slate-950 border-slate-800">
+                <div className="relative">
+                  <button
+                    onClick={() => setLightboxImage(null)}
+                    className="absolute top-4 right-4 z-10 p-2 rounded-full bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-slate-100 transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                  {lightboxImage && (
+                    <img 
+                      src={lightboxImage} 
+                      alt="Full size" 
+                      className="w-full rounded-lg"
+                    />
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Links */}
+            {(project.siteUrl || project.githubUrl) && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+              >
+                <h2 className="text-xl font-semibold mb-4 text-slate-100">Links</h2>
+                <div className="flex gap-3 flex-wrap">
+                  {project.siteUrl && (
+                    <a
+                      href={project.siteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:border-amber-500 hover:text-amber-400 transition-all"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Visit Website
+                    </a>
+                  )}
+                  {project.githubUrl && (
+                    <a
+                      href={project.githubUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:border-amber-500 hover:text-amber-400 transition-all"
+                    >
+                      <Github className="h-4 w-4" />
+                      View on GitHub
+                    </a>
+                  )}
+                </div>
+              </motion.div>
+            )}
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
-            <Card className="shadow-card">
+            <Card className="bg-slate-900 border-slate-800">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Progress</CardTitle>
+                <CardTitle className="text-base text-slate-100">Progress</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-primary mb-2">{progress}%</div>
+                <div className="text-3xl font-bold text-amber-400 mb-3">{progress}%</div>
                 <Progress value={progress} className="h-2" />
               </CardContent>
             </Card>
 
-            <Card className="shadow-card">
+            <Card className="bg-slate-900 border-slate-800">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2"><Calendar className="h-4 w-4" /> Timeline</CardTitle>
+                <CardTitle className="text-base flex items-center gap-2 text-slate-100">
+                  <Calendar className="h-4 w-4" /> Timeline
+                </CardTitle>
               </CardHeader>
               <CardContent className="text-sm space-y-2">
-                <div className="flex justify-between"><span className="text-muted-foreground">Start</span><span>{project.startDate}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Due</span><span>{project.dueDate}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Start</span>
+                  <span className="text-slate-300">{new Date(project.startDate).toLocaleDateString()}</span>
+                </div>
+                {project.endDate && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">End</span>
+                    <span className="text-slate-300">{new Date(project.endDate).toLocaleDateString()}</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            <Card className="shadow-card">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2"><UsersIcon className="h-4 w-4" /> Team</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {members.map((m) => (
-                  <div key={m.id} className="flex items-center gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={m.avatarUrl} />
-                      <AvatarFallback className="text-xs bg-muted">{m.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium">{m.name}</p>
-                      <p className="text-xs text-muted-foreground">{m.id === project.teamLeadId ? 'Team Lead' : 'Member'}</p>
+            {project.members && project.members.length > 0 && (
+              <Card className="bg-slate-900 border-slate-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base text-slate-100">Team</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {project.members.map((member) => (
+                    <div key={member.id} className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="text-xs bg-slate-800 text-slate-300">
+                          {member.user.name?.charAt(0).toUpperCase() || '?'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium text-slate-200">{member.user.name || 'Team Member'}</p>
+                        <p className="text-xs text-slate-500">{member.user.email}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
