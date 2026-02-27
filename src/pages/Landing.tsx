@@ -249,7 +249,7 @@ function ServiceCard({ service, index }) {
 }
 
 // ─── Main ───
-export default function ProjectHub() {
+export default function JHub() {
   const [scrolled, setScrolled] = useState(false);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -343,7 +343,7 @@ export default function ProjectHub() {
               <div className="absolute inset-0.5 bg-slate-950 rounded-md" />
               <span className="relative z-10 text-xs font-extrabold text-amber-400">PH</span>
             </div>
-            ProjectHub
+            JHub
           </div>
           <div className="flex items-center gap-7">
             {["projects", "services", "process", "contact"].map(s => (
@@ -606,7 +606,7 @@ export default function ProjectHub() {
               <div className="absolute inset-0.5 bg-slate-950 rounded" />
               <span className="relative z-10 text-[0.58rem] font-extrabold text-amber-400">PH</span>
             </div>
-            <span className="font-semibold text-sm">ProjectHub</span>
+            <span className="font-semibold text-sm">JHub</span>
           </div>
           <div className="flex gap-6">
             {["Projects", "Services", "Process", "Contact"].map(s => (
@@ -620,7 +620,7 @@ export default function ProjectHub() {
               </button>
             ))}
           </div>
-          <div className="text-xs text-slate-700">&copy; 2026 ProjectHub. All rights reserved.</div>
+          <div className="text-xs text-slate-700">&copy; 2026 JHub. All rights reserved.</div>
         </div>
       </footer>
     </div>

@@ -60,7 +60,7 @@ export default function BackofficeLayout() {
           <div className="absolute inset-0.5 bg-slate-900 rounded-md" />
           <span className="relative z-10 text-[0.6rem] font-extrabold text-amber-400">PH</span>
         </div>
-        {sidebarOpen && <span className="font-bold text-base tracking-tight text-slate-100">ProjectHub</span>}
+        {sidebarOpen && <span className="font-bold text-base tracking-tight text-slate-100">JHub</span>}
       </div>
 
       {/* Nav */}

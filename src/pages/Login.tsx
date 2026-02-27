@@ -84,7 +84,7 @@ export default function Login() {
               <div className="absolute inset-0.5 bg-slate-950 rounded-md" />
               <span className="relative z-10 text-sm font-extrabold text-amber-400">PH</span>
             </div>
-            <span className="font-bold text-2xl tracking-tight">ProjectHub</span>
+            <span className="font-bold text-2xl tracking-tight">JHub</span>
           </div>
 
           {/* Login Card */}
@@ -157,7 +157,7 @@ export default function Login() {
 
           {/* Footer */}
           <p className="text-center text-xs text-slate-600 mt-8">
-            &copy; 2026 ProjectHub. All rights reserved.
+            &copy; 2026 JHub. All rights reserved.
           </p>
         </div>
       </div>

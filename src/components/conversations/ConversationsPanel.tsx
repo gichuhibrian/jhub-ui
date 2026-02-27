@@ -8,6 +8,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { getFileIcon } from '@/lib/s3Upload';
+import { useIsTeamLead } from '@/hooks/useTeamLead';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface ConversationsPanelProps {
   projectId: string;
@@ -35,6 +37,11 @@ export function ConversationsPanel({ projectId, currentUserId, currentUserName }
   const token = localStorage.getItem('token');
   const { isConnected, newMessage, messageUpdate, reactionUpdate, typingUsers, sendTyping, sendStopTyping } =
     useConversationSocket(projectId, token);
+  
+  // Check if current user is admin or team lead
+  const { isAdmin } = usePermissions();
+  const isTeamLead = useIsTeamLead(projectId);
+  const canDeleteAnyMessage = isAdmin || isTeamLead;
 
   // Fetch messages
   const { data: messages = [], isLoading } = useQuery({
@@ -285,6 +292,7 @@ export function ConversationsPanel({ projectId, currentUserId, currentUserName }
               key={msg.id}
               message={msg}
               currentUserId={currentUserId}
+              canDeleteAnyMessage={canDeleteAnyMessage}
               isEditing={editingMessageId === msg.id}
               editContent={editContent}
               setEditContent={setEditContent}
@@ -421,6 +429,7 @@ export function ConversationsPanel({ projectId, currentUserId, currentUserName }
 function MessageItem({
   message,
   currentUserId,
+  canDeleteAnyMessage,
   isEditing,
   editContent,
   setEditContent,
@@ -436,6 +445,7 @@ function MessageItem({
 }: {
   message: ProjectMessage;
   currentUserId: string;
+  canDeleteAnyMessage: boolean;
   isEditing: boolean;
   editContent: string;
   setEditContent: (content: string) => void;
@@ -451,6 +461,9 @@ function MessageItem({
 }) {
   const isOwn = message.userId === currentUserId;
   const [showActions, setShowActions] = useState(false);
+  
+  // User can delete if they own the message OR if they're admin/team lead
+  const canDelete = isOwn || canDeleteAnyMessage;
 
   // Group reactions by emoji
   const groupedReactions = message.reactions.reduce((acc, reaction) => {
@@ -603,20 +616,20 @@ function MessageItem({
               <MessageSquare className="w-4 h-4 text-slate-500" />
             </button>
             {isOwn && (
-              <>
-                <button
-                  onClick={onEdit}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
-                >
-                  <Edit className="w-4 h-4 text-slate-500" />
-                </button>
-                <button
-                  onClick={onDelete}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4 text-rose-500" />
-                </button>
-              </>
+              <button
+                onClick={onEdit}
+                className="p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <Edit className="w-4 h-4 text-slate-500" />
+              </button>
+            )}
+            {canDelete && (
+              <button
+                onClick={onDelete}
+                className="p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <Trash2 className="w-4 h-4 text-rose-500" />
+              </button>
             )}
           </div>
         )}
