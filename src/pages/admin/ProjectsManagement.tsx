@@ -255,8 +255,8 @@ export default function ProjectsManagement() {
       title: form.name,
       description: form.description || undefined,
       status: form.status,
-      startDate: form.startDate,
-      endDate: form.dueDate || undefined,
+      startDate: new Date(form.startDate).toISOString(),
+      endDate: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
       isPublic: form.isPublic,
     };
 
