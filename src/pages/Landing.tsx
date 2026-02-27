@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { projectService, ProjectResponse } from "@/services/projectService";
+import { contactService, ContactFormData } from "@/services/contact.service";
 
 const PROJECTS = [
   { id: 1, name: "NexaPay Dashboard", desc: "Real-time financial analytics platform processing 2M+ daily transactions with sub-second latency and predictive fraud detection.", tags: ["React", "Node.js", "AWS"], status: "complete", progress: 100, category: "web", img: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80", team: ["A", "K", "M"] },
@@ -253,6 +254,14 @@ export default function JHub() {
   const [scrolled, setScrolled] = useState(false);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [contactForm, setContactForm] = useState<ContactFormData>({
+    name: '',
+    email: '',
+    message: '',
+  });
+  const [contactSubmitting, setContactSubmitting] = useState(false);
+  const [contactSuccess, setContactSuccess] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -281,6 +290,25 @@ export default function JHub() {
   const scrollTo = useCallback((id) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   }, []);
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setContactSubmitting(true);
+    setContactError(null);
+    setContactSuccess(false);
+
+    try {
+      await contactService.submitContact(contactForm);
+      setContactSuccess(true);
+      setContactForm({ name: '', email: '', message: '' });
+    } catch (error: any) {
+      setContactError(
+        error.response?.data?.message || 'Failed to send message. Please try again.'
+      );
+    } finally {
+      setContactSubmitting(false);
+    }
+  };
 
   // Map backend projects to display format
   const mappedProjects = projects.map(p => ({
@@ -564,17 +592,31 @@ export default function JHub() {
 
             {/* Form */}
             <Reveal delay={0.1}>
-              <div className="flex flex-col gap-4">
+              <form onSubmit={handleContactSubmit} className="flex flex-col gap-4">
+                {contactSuccess && (
+                  <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
+                    Thank you for contacting us! We'll get back to you soon.
+                  </div>
+                )}
+                {contactError && (
+                  <div className="p-4 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
+                    {contactError}
+                  </div>
+                )}
                 {[
-                  { label: "Your Name", type: "text", placeholder: "Jane Smith" },
-                  { label: "Email Address", type: "email", placeholder: "jane@company.com" },
+                  { label: "Your Name", type: "text", placeholder: "Jane Smith", field: "name" },
+                  { label: "Email Address", type: "email", placeholder: "jane@company.com", field: "email" },
                 ].map(f => (
                   <div key={f.label}>
                     <label className="block text-xs font-mono text-slate-600 uppercase tracking-widest mb-1.5">{f.label}</label>
                     <input
                       type={f.type}
                       placeholder={f.placeholder}
-                      className="w-full px-4 py-3 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all duration-200"
+                      value={contactForm[f.field as keyof ContactFormData]}
+                      onChange={(e) => setContactForm({ ...contactForm, [f.field]: e.target.value })}
+                      required
+                      disabled={contactSubmitting}
+                      className="w-full px-4 py-3 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all duration-200 disabled:opacity-50"
                       style={{ fontFamily: "inherit" }}
                     />
                   </div>
@@ -584,15 +626,24 @@ export default function JHub() {
                   <textarea
                     placeholder="We're looking to build..."
                     rows={5}
-                    className="w-full px-4 py-3 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 resize-y focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all duration-200"
+                    value={contactForm.message}
+                    onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                    required
+                    disabled={contactSubmitting}
+                    className="w-full px-4 py-3 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm placeholder-slate-600 resize-y focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none transition-all duration-200 disabled:opacity-50"
                     style={{ fontFamily: "inherit" }}
                   />
                 </div>
-                <GradientButton onClick={() => {}} className="w-full justify-center">
-                  Send Message
+                <button
+                  type="submit"
+                  disabled={contactSubmitting}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold text-sm hover:-translate-y-0.5 hover:shadow-lg hover:shadow-amber-500/25 transition-all duration-300 cursor-pointer border-none w-full justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                  style={{ fontFamily: "inherit" }}
+                >
+                  {contactSubmitting ? 'Sending...' : 'Send Message'}
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                </GradientButton>
-              </div>
+                </button>
+              </form>
             </Reveal>
           </div>
         </div>

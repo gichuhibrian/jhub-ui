@@ -157,7 +157,7 @@ export default function AcceptInvitePage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <span className="text-2xl font-bold bg-gradient-to-br from-amber-400 to-orange-500 bg-clip-text text-transparent">
-            Project Hub
+            JHub
           </span>
         </div>
 
