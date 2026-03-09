@@ -331,7 +331,7 @@ export default function UserProjectDetail() {
         {/* TASKS TAB */}
         {activeTab === 'tasks' && (
           <div>
-            <KanbanBoard projectId={projectId} userId={currentUser.id} readonly={false} />
+            <KanbanBoard projectId={projectId} readonly={false} />
           </div>
         )}
 
