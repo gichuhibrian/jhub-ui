@@ -193,7 +193,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
     );
   }
 
-  const canEdit = permissions.can.editAllTasks || (permissions.can.editOwnTasks && task.userId === currentUser?.id);
+  const canEdit = permissions.canEditTask(task.userId);
   const completedObjectives = objectives.filter(o => o.status === 'DONE').length;
   const progress = objectives.length > 0 ? Math.round((completedObjectives / objectives.length) * 100) : 0;
 
@@ -400,6 +400,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                         ? 'bg-emerald-500 border-emerald-500'
                         : 'border-slate-700 hover:border-amber-500'
                     } ${!canEdit ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                    title={!canEdit ? 'Only the assignee or admin can toggle objectives' : ''}
                   >
                     {obj.status === 'DONE' && <Check className="w-3 h-3 text-white" />}
                   </button>

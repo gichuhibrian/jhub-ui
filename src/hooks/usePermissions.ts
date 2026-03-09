@@ -26,7 +26,10 @@ export interface Permissions {
     addProjectDocuments: boolean;
     markObjectivesComplete: boolean;
     reviewTasks: boolean;
+    viewAllTasks: boolean; // Admin and members can see all tasks
   };
+  canEditTask: (taskAssigneeId: string | null) => boolean;
+  canDragTask: (taskAssigneeId: string | null) => boolean;
 }
 
 export const usePermissions = (): Permissions => {
@@ -34,6 +37,7 @@ export const usePermissions = (): Permissions => {
 
   return useMemo(() => {
     const userType = currentUser?.userType as UserType | undefined;
+    const userId = currentUser?.id;
 
     const isAdmin = userType === 'ADMIN';
     const isMember = userType === 'MEMBER';
@@ -67,12 +71,27 @@ export const usePermissions = (): Permissions => {
         deleteComments: isAdmin || isMember,
         dragTasks: isAdmin || isMember,
         markObjectivesComplete: isAdmin || isMember, // Members can only mark their own
+        viewAllTasks: isAdmin || isMember, // Both admin and members can see all tasks
 
         // Member + Client permissions
         viewAssignedProjects: isMember || isClient,
       },
+      // Function to check if user can edit a specific task
+      // Only admin or the assignee can edit/action on a task
+      canEditTask: (taskAssigneeId: string | null) => {
+        if (isAdmin) return true;
+        if (!userId) return false;
+        return taskAssigneeId === userId;
+      },
+      // Function to check if user can drag a specific task
+      // Only admin or the assignee can drag a task
+      canDragTask: (taskAssigneeId: string | null) => {
+        if (isAdmin) return true;
+        if (!userId) return false;
+        return taskAssigneeId === userId;
+      },
     };
-  }, [currentUser?.userType]);
+  }, [currentUser?.userType, currentUser?.id]);
 };
 
 export const useCurrentUser = () => {

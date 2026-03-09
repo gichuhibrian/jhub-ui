@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { isAfter, parseISO, startOfDay } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
 import { notificationService } from '@/services/notifications.service';
+import { usePermissions } from '@/hooks/usePermissions';
 
 // ── Priority badge ────────────────────────────────────────────────────────
 const PRIORITY_STYLE: Record<TaskPriority, { label: string; cls: string }> = {
@@ -33,9 +34,12 @@ interface KanbanCardProps {
 }
 
 export function KanbanCard({ task, showProject, readonly, overlay = false, onClick }: KanbanCardProps) {
+  const permissions = usePermissions();
+  const canDrag = permissions.canDragTask(task.userId);
+  
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
-    disabled: readonly || overlay,
+    disabled: readonly || overlay || !canDrag,
   });
 
   // Check for unread notifications related to this task
@@ -57,7 +61,7 @@ export function KanbanCard({ task, showProject, readonly, overlay = false, onCli
   const style = {
     transform: overlay ? undefined : CSS.Translate.toString(transform),
     opacity: isDragging ? 0.35 : 1,
-    cursor: readonly ? 'pointer' : 'grab',
+    cursor: readonly ? 'pointer' : (canDrag ? 'grab' : 'pointer'),
   };
 
   const doneObjectives = task.objectives.filter(o => o.status === 'DONE').length;

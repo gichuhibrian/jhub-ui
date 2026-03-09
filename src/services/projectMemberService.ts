@@ -27,6 +27,12 @@ export interface AddMemberPayload {
   isTeamLead?: boolean;
 }
 
+export interface AddMembersBatchPayload {
+  projectId: string;
+  userIds: string[];
+  isTeamLead?: boolean;
+}
+
 class ProjectMemberService {
   private readonly basePath = '/project-members';
 
@@ -53,6 +59,11 @@ class ProjectMemberService {
 
   async addMember(data: AddMemberPayload): Promise<ProjectMemberResponse> {
     const response = await apiService.post<ProjectMemberResponse>(this.basePath, data);
+    return response.data;
+  }
+
+  async addMembersBatch(data: AddMembersBatchPayload): Promise<ProjectMemberResponse[]> {
+    const response = await apiService.post<ProjectMemberResponse[]>(`${this.basePath}/batch`, data);
     return response.data;
   }
 

@@ -69,7 +69,7 @@ export default function AdminProjectDetail() {
   const currentUser = useCurrentUser();
   const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'members' | 'gallery' | 'resources' | 'conversations'>('overview');
   const [addMemberModal, setAddMemberModal] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [addImageModal, setAddImageModal] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -122,16 +122,30 @@ export default function AdminProjectDetail() {
     enabled: !!projectId,
   });
 
-  // Add member mutation
-  const addMemberMutation = useMutation({
-    mutationFn: (userId: string) => projectMemberService.addMember({ projectId: projectId!, userId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
-      toast.success('Member added to project');
-      setAddMemberModal(false);
-      setSelectedUserId('');
+  // Add members mutation (supports multiple via batch endpoint)
+  const addMembersMutation = useMutation({
+    mutationFn: async (userIds: string[]) => {
+      if (userIds.length === 1) {
+        // Single user - use regular endpoint
+        return [await projectMemberService.addMember({ 
+          projectId: projectId!, 
+          userId: userIds[0] 
+        })];
+      } else {
+        // Multiple users - use batch endpoint
+        return projectMemberService.addMembersBatch({
+          projectId: projectId!,
+          userIds: userIds
+        });
+      }
     },
-    onError: () => toast.error('Failed to add member'),
+    onSuccess: (_, userIds) => {
+      queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
+      toast.success(`${userIds.length} member${userIds.length > 1 ? 's' : ''} added to project`);
+      setAddMemberModal(false);
+      setSelectedUserIds([]);
+    },
+    onError: () => toast.error('Failed to add members'),
   });
 
   // Remove member mutation
@@ -653,41 +667,76 @@ export default function AdminProjectDetail() {
       {/* Add Member Modal */}
       <Modal
         open={addMemberModal}
-        onClose={() => setAddMemberModal(false)}
-        title="Add Member to Project"
+        onClose={() => {
+          setAddMemberModal(false);
+          setSelectedUserIds([]);
+        }}
+        title="Add Members to Project"
         footer={
           <>
             <button
-              onClick={() => setAddMemberModal(false)}
+              onClick={() => {
+                setAddMemberModal(false);
+                setSelectedUserIds([]);
+              }}
               className="px-4 py-2 rounded-lg border border-slate-700 text-slate-400 hover:border-slate-600 transition-all"
             >
               Cancel
             </button>
             <button
-              onClick={() => selectedUserId && addMemberMutation.mutate(selectedUserId)}
-              disabled={!selectedUserId}
+              onClick={() => selectedUserIds.length > 0 && addMembersMutation.mutate(selectedUserIds)}
+              disabled={selectedUserIds.length === 0 || addMembersMutation.isPending}
               className="px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-slate-950 font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Add Member
+              {addMembersMutation.isPending ? 'Adding...' : `Add ${selectedUserIds.length > 0 ? selectedUserIds.length : ''} Member${selectedUserIds.length !== 1 ? 's' : ''}`}
             </button>
           </>
         }
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">Select User</label>
-            <select
-              value={selectedUserId}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 outline-none"
-            >
-              <option value="">Select a user...</option>
+            <label className="block text-xs text-slate-500 uppercase tracking-widest mb-2">
+              Select Users (hold Ctrl/Cmd to select multiple)
+            </label>
+            <div className="space-y-2 max-h-96 overflow-y-auto border border-slate-800 rounded-lg p-2 bg-slate-950">
               {availableUsers.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.name} ({user.email})
-                </option>
+                <label
+                  key={user.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
+                    selectedUserIds.includes(user.id)
+                      ? 'bg-amber-500/10 border border-amber-500/30'
+                      : 'bg-slate-900 border border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedUserIds.includes(user.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedUserIds([...selectedUserIds, user.id]);
+                      } else {
+                        setSelectedUserIds(selectedUserIds.filter(id => id !== user.id));
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-slate-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-0 bg-slate-950"
+                  />
+                  <Avatar className="h-8 w-8 border-2 border-slate-800">
+                    <AvatarFallback className="bg-amber-500/10 text-amber-400 font-bold text-xs">
+                      {user.name?.[0] || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-slate-200 truncate">{user.name}</div>
+                    <div className="text-xs text-slate-500 truncate">{user.email}</div>
+                  </div>
+                </label>
               ))}
-            </select>
+            </div>
+            {selectedUserIds.length > 0 && (
+              <div className="mt-2 text-sm text-amber-400">
+                {selectedUserIds.length} user{selectedUserIds.length !== 1 ? 's' : ''} selected
+              </div>
+            )}
           </div>
           {availableUsers.length === 0 && (
             <p className="text-sm text-slate-500">All users are already members of this project.</p>
